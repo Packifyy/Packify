@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nama VARCHAR(150) NOT NULL,
+    alamat TEXT NOT NULL,
+    telpon VARCHAR(20) NOT NULL,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    role ENUM('pelanggan', 'kurir') NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
