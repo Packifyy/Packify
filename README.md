@@ -76,7 +76,7 @@ Koneksi database pada aplikasi (misalnya di `service/database.php`) wajib menggu
 
 - **Host:** `db`
 - **Nama Database:** `packify`
-- **Username:** `webuser`
+- **Username:** `packifyroot`
 - **Password:** `Pass123`
 - **Root Password (Opsional/Admin):** `root`
 
