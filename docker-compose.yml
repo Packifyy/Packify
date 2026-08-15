@@ -1,0 +1,21 @@
+services:
+  app:
+    build: .
+    container_name: packify_app
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      - db
+
+  db:
+    image: mysql:8.0
+    container_name: packify_db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: packify
+      MYSQL_USER: packifyroot
+      MYSQL_PASSWORD: Pass123
+    ports:
+      - "3306:3306" # VULN: Port database MySQL terekspos ke host
