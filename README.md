@@ -44,11 +44,12 @@ packed-delivery/
 │   └── navbar.php         # Navbar bersama (dashboard, profile, edit)
 ├── Dockerfile             # Konfigurasi environment image PHP-Apache
 ├── docker-compose.yml     # Konfigurasi layanan container (Web App & Database)
-├── README.md                 # Dokumentasi proyek (file ini)
-├── functions.php            # Helper session, CSRF, flash message, validasi form
+├── README.md              # Dokumentasi proyek (file ini)
+├── functions.php          # Helper session, CSRF, flash message, validasi form
 ├── index.php              # Landing page utama
 ├── login.php              # Halaman autentikasi (Login)
 ├── register.php           # Halaman pendaftaran akun baru
+├── logout.php             # Handler logout
 ├── dashboard.php          # Halaman beranda setelah login
 ├── barang.php             # Form pemesanan pengiriman paket
 ├── delivery.php           # Halaman informasi pengiriman untuk kurir
