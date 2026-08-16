@@ -38,9 +38,14 @@ packed-delivery/
 ├── asset/                 # Berisi gambar dan aset visual (logo, ilustrasi)
 ├── service/
 │   └── database.php       # Konfigurasi koneksi ke database MySQL
+├── sql/
+│   └── 01_users.sql       # Skema tabel users
+├── partials/
+│   └── navbar.php         # Navbar bersama (dashboard, profile, edit)
 ├── Dockerfile             # Konfigurasi environment image PHP-Apache
 ├── docker-compose.yml     # Konfigurasi layanan container (Web App & Database)
-├── README.md              # Dokumentasi proyek (file ini)
+├── README.md                 # Dokumentasi proyek (file ini)
+├── functions.php            # Helper session, CSRF, flash message, validasi form
 ├── index.php              # Landing page utama
 ├── login.php              # Halaman autentikasi (Login)
 ├── register.php           # Halaman pendaftaran akun baru

@@ -1,0 +1,16 @@
+body {
+    background-color: #f4f6f8;
+}
+
+.navbar-brand {
+    color: #2563eb !important;
+}
+
+.card {
+    border: 1px solid #e5e7eb;
+}
+
+dl.row dt {
+    color: #6b7280;
+    font-weight: 600;
+}
