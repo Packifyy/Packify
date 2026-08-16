@@ -1,9 +1,8 @@
 <?php
 
-session_start();
+require_once __DIR__ . '/functions.php';
 
-session_unset();
-session_destroy();
-
-header('Location: portal.php');
+start_session_safe();
+logout_user();
+header('Location: login.php');
 exit;
