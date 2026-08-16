@@ -7,9 +7,9 @@ if (current_user() !== null) {
     $user = current_user();
 
 if ($user !== null && ($user['role'] ?? '') === 'kurir') {
-    header('Location: courier-dashboard.php');
+    header('Location: dashboard-kurir.php');
 } else {
-    header('Location: customer-dashboard.php');
+    header('Location: dashboard-pelanggan.php');
 }
 
 exit;
@@ -47,9 +47,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             set_flash('success', 'Berhasil masuk.');
 
             if (($user['role'] ?? '') === 'kurir') {
-                header('Location: courier-dashboard.php');
+                header('Location: dashboard-kurir.php');
             } else {
-                header('Location: customer-dashboard.php');
+                header('Location: dashboard-pelanggan.php');
             }
 
 exit;
