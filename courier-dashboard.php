@@ -1,0 +1,1259 @@
+<?php
+session_start();
+
+/* =====================================================
+   COURIER ACCESS PROTECTION
+===================================================== */
+
+if (
+    !isset($_SESSION['logged_in']) ||
+    $_SESSION['logged_in'] !== true ||
+    !isset($_SESSION['role']) ||
+    $_SESSION['role'] !== 'courier'
+) {
+    header('Location: login.php?role=courier');
+    exit;
+}
+
+$name = $_SESSION['identity'] ?? 'Courier';
+
+$firstName = explode(' ', trim($name))[0];
+
+$initial = strtoupper(
+    substr(
+        trim($name),
+        0,
+        1
+    )
+);
+?>
+
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <meta
+        name="description"
+        content="Packify courier dashboard"
+    >
+
+    <title>Courier Dashboard — Packify</title>
+
+    <link
+        rel="stylesheet"
+        href="assets/css/dashboard.css"
+    >
+
+</head>
+
+
+<body>
+
+<div class="dashboard courier-dashboard">
+
+
+    <!-- =================================================
+         SIDEBAR
+    ================================================== -->
+
+    <aside class="sidebar">
+
+        <a
+            href="index.php"
+            class="dashboard-brand"
+        >
+            Pack<span>i</span>fy
+        </a>
+
+
+        <div class="sidebar-label">
+            COURIER
+        </div>
+
+
+        <nav>
+
+            <a
+                class="active"
+                href="#overview"
+            >
+                <span>01</span>
+                Overview
+            </a>
+
+            <a href="#tasks">
+                <span>02</span>
+                Today's tasks
+            </a>
+
+            <a href="#deliveries">
+                <span>03</span>
+                Deliveries
+            </a>
+
+            <a href="#history">
+                <span>04</span>
+                Performance
+            </a>
+
+        </nav>
+
+
+        <div class="sidebar-bottom">
+
+            <a href="#settings">
+                Settings
+            </a>
+
+            <a href="logout.php">
+                Log out
+            </a>
+
+        </div>
+
+    </aside>
+
+
+
+    <!-- =================================================
+         MAIN
+    ================================================== -->
+
+    <main class="dashboard-main">
+
+
+        <!-- =================================================
+             HEADER
+        ================================================== -->
+
+        <header class="dashboard-header">
+
+            <div class="dashboard-heading">
+
+                <div class="small-label">
+                    COURIER DASHBOARD
+                </div>
+
+                <h1 id="overview">
+                    Good morning,
+                    <?= htmlspecialchars($firstName) ?>.
+                </h1>
+
+                <p>
+                    Here's your delivery route for today.
+                </p>
+
+            </div>
+
+
+            <div class="profile">
+
+                <div class="avatar">
+                    <?= htmlspecialchars($initial) ?>
+                </div>
+
+                <div class="profile-info">
+
+                    <strong>
+                        <?= htmlspecialchars($name) ?>
+                    </strong>
+
+                    <span>
+                        Courier
+                    </span>
+
+                </div>
+
+            </div>
+
+        </header>
+
+
+
+        <!-- =================================================
+             TODAY OVERVIEW
+        ================================================== -->
+
+        <section class="courier-overview-grid">
+
+
+            <!-- WORKLOAD -->
+
+            <div
+                class="courier-hero"
+                data-reveal
+            >
+
+                <div class="courier-hero-top">
+
+                    <div>
+
+                        <span class="small-label">
+                            TODAY'S WORKLOAD
+                        </span>
+
+                        <h2>
+                            Keep moving.
+                        </h2>
+
+                    </div>
+
+                    <span class="live-status">
+                        <i></i>
+                        ACTIVE
+                    </span>
+
+                </div>
+
+
+                <div class="workload-number">
+                    <strong>06</strong>
+
+                    <span>
+                        stops<br>
+                        scheduled
+                    </span>
+                </div>
+
+
+                <div class="workload-progress">
+
+                    <div class="workload-progress-head">
+
+                        <span>
+                            Daily completion
+                        </span>
+
+                        <strong>
+                            67%
+                        </strong>
+
+                    </div>
+
+                    <div class="workload-track">
+
+                        <div
+                            class="workload-fill"
+                            style="width:67%"
+                        ></div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="hero-meta">
+
+                    <div>
+                        <span>COMPLETED</span>
+                        <strong>04</strong>
+                    </div>
+
+                    <div>
+                        <span>REMAINING</span>
+                        <strong>02</strong>
+                    </div>
+
+                    <div>
+                        <span>ON TIME</span>
+                        <strong>100%</strong>
+                    </div>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- NEXT STOP -->
+
+            <div
+                class="next-stop-card"
+                data-reveal
+            >
+
+                <div class="next-stop-label">
+
+                    <span class="small-label">
+                        NEXT STOP
+                    </span>
+
+                    <span class="next-stop-time">
+                        15:00
+                    </span>
+
+                </div>
+
+
+                <div class="stop-icon">
+                    →
+                </div>
+
+
+                <h3>
+                    PKF-2850-03
+                </h3>
+
+
+                <p>
+                    Jl. Sudirman No. 18,
+                    Jakarta
+                </p>
+
+
+                <div class="stop-route">
+
+                    <span>
+                        Jakarta
+                    </span>
+
+                    <div class="mini-route">
+                        <i></i>
+                        <i></i>
+                        <i></i>
+                    </div>
+
+                    <span>
+                        Bekasi
+                    </span>
+
+                </div>
+
+
+                <button
+                    type="button"
+                    class="route-button"
+                >
+                    View delivery
+                    <span>→</span>
+                </button>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- =================================================
+             QUICK STATS
+        ================================================== -->
+
+        <section class="stats-grid courier-stats">
+
+
+            <div
+                class="stat-card"
+                data-reveal
+            >
+
+                <span>
+                    TODAY'S PICKUPS
+                </span>
+
+                <strong>
+                    06
+                </strong>
+
+                <small>
+                    Scheduled for today
+                </small>
+
+                <div class="stat-indicator">
+                    <i></i>
+                    <span>2 remaining</span>
+                </div>
+
+            </div>
+
+
+            <div
+                class="stat-card"
+                data-reveal
+            >
+
+                <span>
+                    DELIVERIES
+                </span>
+
+                <strong>
+                    04
+                </strong>
+
+                <small>
+                    Packages on route
+                </small>
+
+                <div class="stat-indicator">
+                    <i></i>
+                    <span>Active route</span>
+                </div>
+
+            </div>
+
+
+            <div
+                class="stat-card"
+                data-reveal
+            >
+
+                <span>
+                    COMPLETED
+                </span>
+
+                <strong>
+                    02
+                </strong>
+
+                <small>
+                    Successfully delivered
+                </small>
+
+                <div class="stat-indicator completed-indicator">
+                    <i></i>
+                    <span>On schedule</span>
+                </div>
+
+            </div>
+
+
+        </section>
+
+
+
+        <!-- =================================================
+             TODAY'S ROUTE
+        ================================================== -->
+
+        <section
+            class="panel courier-route-panel"
+            id="tasks"
+            data-reveal
+        >
+
+            <div class="panel-heading">
+
+                <div>
+
+                    <span class="small-label">
+                        TODAY
+                    </span>
+
+                    <h2>
+                        Delivery route
+                    </h2>
+
+                </div>
+
+                <span class="status">
+                    4 active
+                </span>
+
+            </div>
+
+
+            <div class="courier-route-list">
+
+
+                <!-- ROUTE 1 -->
+
+                <div class="courier-route-item completed">
+
+                    <div class="route-index">
+                        <span>01</span>
+                    </div>
+
+
+                    <div class="route-main">
+
+                        <div class="route-title">
+
+                            <strong>
+                                PKF-2841-18
+                            </strong>
+
+                            <span class="status delivered">
+                                Completed
+                            </span>
+
+                        </div>
+
+                        <span class="route-location">
+                            Depok → Bandung
+                        </span>
+
+                    </div>
+
+
+                    <div class="route-time">
+
+                        <strong>
+                            13:30
+                        </strong>
+
+                        <span>
+                            Delivered
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- ROUTE 2 -->
+
+                <div class="courier-route-item current">
+
+                    <div class="route-index">
+                        <span>02</span>
+                    </div>
+
+
+                    <div class="route-main">
+
+                        <div class="route-title">
+
+                            <strong>
+                                PKF-2846-22
+                            </strong>
+
+                            <span class="status">
+                                In transit
+                            </span>
+
+                        </div>
+
+                        <span class="route-location">
+                            Jakarta → Cimahi
+                        </span>
+
+                    </div>
+
+
+                    <div class="route-time">
+
+                        <strong>
+                            11:00
+                        </strong>
+
+                        <span>
+                            On route
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- ROUTE 3 -->
+
+                <div class="courier-route-item">
+
+                    <div class="route-index">
+                        <span>03</span>
+                    </div>
+
+
+                    <div class="route-main">
+
+                        <div class="route-title">
+
+                            <strong>
+                                PKF-2847-01
+                            </strong>
+
+                            <span class="status">
+                                Pickup
+                            </span>
+
+                        </div>
+
+                        <span class="route-location">
+                            Jakarta → Bandung
+                        </span>
+
+                    </div>
+
+
+                    <div class="route-time">
+
+                        <strong>
+                            09:30
+                        </strong>
+
+                        <span>
+                            Scheduled
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- ROUTE 4 -->
+
+                <div class="courier-route-item">
+
+                    <div class="route-index">
+                        <span>04</span>
+                    </div>
+
+
+                    <div class="route-main">
+
+                        <div class="route-title">
+
+                            <strong>
+                                PKF-2850-03
+                            </strong>
+
+                            <span class="status">
+                                Pickup
+                            </span>
+
+                        </div>
+
+                        <span class="route-location">
+                            Jakarta → Bekasi
+                        </span>
+
+                    </div>
+
+
+                    <div class="route-time">
+
+                        <strong>
+                            15:00
+                        </strong>
+
+                        <span>
+                            Upcoming
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+            </div>
+
+        </section>
+<!-- =================================================
+     SHIPMENT DETAIL MODAL
+================================================= -->
+
+<div
+    class="shipment-modal"
+    id="shipmentModal"
+    aria-hidden="true"
+>
+
+    <div class="shipment-modal-backdrop"></div>
+
+    <div
+        class="shipment-modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modalShipmentId"
+    >
+
+        <!-- MODAL HEADER -->
+
+        <div class="shipment-modal-header">
+
+            <div>
+
+                <span class="small-label">
+                    SHIPMENT DETAIL
+                </span>
+
+                <h2 id="modalShipmentId">
+                    PKF-2847-01
+                </h2>
+
+            </div>
+
+            <button
+                type="button"
+                class="modal-close"
+                id="modalClose"
+                aria-label="Close"
+            >
+                ×
+            </button>
+
+        </div>
+
+
+        <!-- STATUS -->
+
+        <div class="modal-status-row">
+
+            <div>
+
+                <span class="modal-muted">
+                    CURRENT STATUS
+                </span>
+
+                <strong id="modalStatus">
+                    Pickup scheduled
+                </strong>
+
+            </div>
+
+            <span
+                class="status"
+                id="modalStatusBadge"
+            >
+                Pickup
+            </span>
+
+        </div>
+
+
+        <!-- ROUTE -->
+
+        <div class="modal-route">
+
+            <div class="modal-location">
+
+                <span>
+                    FROM
+                </span>
+
+                <strong id="modalFrom">
+                    Jakarta
+                </strong>
+
+                <small>
+                    Pickup location
+                </small>
+
+            </div>
+
+
+            <div class="modal-route-line">
+
+                <div class="modal-route-dot"></div>
+
+                <div class="modal-route-progress"></div>
+
+                <div class="modal-route-arrow">
+                    →
+                </div>
+
+            </div>
+
+
+            <div class="modal-location destination">
+
+                <span>
+                    TO
+                </span>
+
+                <strong id="modalTo">
+                    Bandung
+                </strong>
+
+                <small>
+                    Delivery destination
+                </small>
+
+            </div>
+
+        </div>
+
+
+        <!-- INFORMATION -->
+
+        <div class="modal-info-grid">
+
+            <div>
+
+                <span>
+                    SCHEDULE
+                </span>
+
+                <strong id="modalSchedule">
+                    09:30
+                </strong>
+
+            </div>
+
+
+            <div>
+
+                <span>
+                    PACKAGE
+                </span>
+
+                <strong>
+                    Standard
+                </strong>
+
+            </div>
+
+
+            <div>
+
+                <span>
+                    RECIPIENT
+                </span>
+
+                <strong id="modalRecipient">
+                    Customer
+                </strong>
+
+            </div>
+
+
+            <div>
+
+                <span>
+                    EST. ARRIVAL
+                </span>
+
+                <strong id="modalArrival">
+                    Today
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <!-- TIMELINE -->
+
+        <div class="modal-timeline">
+
+            <div class="modal-timeline-item completed">
+
+                <div class="modal-timeline-dot"></div>
+
+                <div>
+
+                    <strong>
+                        Shipment created
+                    </strong>
+
+                    <span>
+                        Order has been registered
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <div
+                class="modal-timeline-item"
+                id="timelinePickup"
+            >
+
+                <div class="modal-timeline-dot"></div>
+
+                <div>
+
+                    <strong>
+                        Pickup
+                    </strong>
+
+                    <span>
+                        Courier pickup pending
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <div
+                class="modal-timeline-item"
+                id="timelineTransit"
+            >
+
+                <div class="modal-timeline-dot"></div>
+
+                <div>
+
+                    <strong>
+                        In transit
+                    </strong>
+
+                    <span>
+                        Package is on the way
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <div
+                class="modal-timeline-item"
+                id="timelineDelivered"
+            >
+
+                <div class="modal-timeline-dot"></div>
+
+                <div>
+
+                    <strong>
+                        Delivered
+                    </strong>
+
+                    <span>
+                        Package successfully delivered
+                    </span>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- ACTION -->
+
+        <div class="modal-action">
+
+            <button
+                type="button"
+                class="modal-action-button"
+                id="shipmentAction"
+            >
+                Start pickup
+                <span>→</span>
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+        <!-- =================================================
+             DELIVERY INFORMATION
+        ================================================== -->
+
+        <section
+            class="content-grid courier-info-grid"
+            id="deliveries"
+        >
+
+
+            <!-- ROUTE STATUS -->
+
+            <div
+                class="panel route-status-panel"
+                data-reveal
+            >
+
+                <div class="panel-heading">
+
+                    <div>
+
+                        <span class="small-label">
+                            ROUTE STATUS
+                        </span>
+
+                        <h2>
+                            On schedule
+                        </h2>
+
+                    </div>
+
+                    <div class="route-status-icon">
+                        ✓
+                    </div>
+
+                </div>
+
+
+                <p>
+                    Your current route is running normally.
+                    Keep your location updated during delivery.
+                </p>
+
+
+                <div class="route-status-line">
+
+                    <div class="status-pulse">
+                        <i></i>
+                    </div>
+
+                    <div>
+
+                        <strong>
+                            Route is active
+                        </strong>
+
+                        <span>
+                            Last updated just now
+                        </span>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- NEXT DELIVERY -->
+
+            <div
+                class="panel delivery-focus"
+                data-reveal
+            >
+
+                <span class="small-label">
+                    NEXT DELIVERY
+                </span>
+
+
+                <div class="delivery-focus-header">
+
+                    <h2>
+                        PKF-2846-22
+                    </h2>
+
+                    <span class="status">
+                        In transit
+                    </span>
+
+                </div>
+
+
+                <div class="delivery-address">
+
+                    <span>
+                        DELIVERY TO
+                    </span>
+
+                    <strong>
+                        Cimahi, Jawa Barat
+                    </strong>
+
+                </div>
+
+
+                <div class="delivery-actions">
+
+                    <button
+                        type="button"
+                        class="route-button dark"
+                    >
+                        View details
+                        <span>→</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        class="icon-button"
+                        title="Open route"
+                    >
+                        ↗
+                    </button>
+
+                </div>
+
+            </div>
+
+
+        </section>
+
+
+
+        <!-- =================================================
+             PERFORMANCE
+        ================================================== -->
+
+        <section
+            class="panel courier-performance"
+            id="history"
+            data-reveal
+        >
+
+            <div class="panel-heading">
+
+                <div>
+
+                    <span class="small-label">
+                        PERFORMANCE
+                    </span>
+
+                    <h2>
+                        Today's progress
+                    </h2>
+
+                </div>
+
+                <span class="status delivered">
+                    On track
+                </span>
+
+            </div>
+
+
+            <div class="performance-grid">
+
+
+                <div class="performance-item">
+
+                    <div class="performance-head">
+
+                        <span>
+                            Pickup completion
+                        </span>
+
+                        <strong>
+                            67%
+                        </strong>
+
+                    </div>
+
+                    <div class="performance-track">
+
+                        <div
+                            class="performance-fill"
+                            style="width:67%"
+                        ></div>
+
+                    </div>
+
+                    <small>
+                        4 of 6 scheduled pickups
+                    </small>
+
+                </div>
+
+
+
+                <div class="performance-item">
+
+                    <div class="performance-head">
+
+                        <span>
+                            Delivery completion
+                        </span>
+
+                        <strong>
+                            50%
+                        </strong>
+
+                    </div>
+
+                    <div class="performance-track">
+
+                        <div
+                            class="performance-fill"
+                            style="width:50%"
+                        ></div>
+
+                    </div>
+
+                    <small>
+                        2 of 4 active deliveries
+                    </small>
+
+                </div>
+
+
+
+                <div class="performance-item">
+
+                    <div class="performance-head">
+
+                        <span>
+                            Route efficiency
+                        </span>
+
+                        <strong>
+                            94%
+                        </strong>
+
+                    </div>
+
+                    <div class="performance-track">
+
+                        <div
+                            class="performance-fill"
+                            style="width:94%"
+                        ></div>
+
+                    </div>
+
+                    <small>
+                        Running according to schedule
+                    </small>
+
+                </div>
+
+
+            </div>
+
+        </section>
+
+
+
+        <!-- =================================================
+             QUICK ACTION
+        ================================================== -->
+
+        <section
+            class="quick-action"
+            id="settings"
+            data-reveal
+        >
+
+            <div>
+
+                <span class="small-label">
+                    COURIER STATUS
+                </span>
+
+                <h2>
+                    You're ready for the next stop.
+                </h2>
+
+                <p>
+                    Keep your delivery status updated
+                    so customers can follow their packages.
+                </p>
+
+            </div>
+
+
+            <a
+                href="logout.php"
+                class="btn-primary"
+            >
+                End session
+                <span>→</span>
+            </a>
+
+        </section>
+
+
+    </main>
+
+</div>
+
+
+<script src="assets/js/app.js"></script>
+
+</body>
+
+</html>
