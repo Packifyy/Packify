@@ -50,9 +50,28 @@ function require_login(array $allowedRoles = []): array
 
 function login_user(int $userId): void
 {
+    global $db;
+
     start_session_safe();
-    session_regenerate_id(true); // cegah session fixation
+    session_regenerate_id(true);
+
+    $stmt = mysqli_prepare(
+        $db,
+        'SELECT nama, role FROM users WHERE id = ?'
+    );
+
+    mysqli_stmt_bind_param($stmt, 'i', $userId);
+    mysqli_stmt_execute($stmt);
+
+    $result = mysqli_stmt_get_result($stmt);
+    $user = mysqli_fetch_assoc($result);
+
+    mysqli_stmt_close($stmt);
+
     $_SESSION['user_id'] = $userId;
+    $_SESSION['logged_in'] = true;
+    $_SESSION['role'] = $user['role'] ?? '';
+    $_SESSION['identity'] = $user['nama'] ?? '';
 }
 
 function logout_user(): void

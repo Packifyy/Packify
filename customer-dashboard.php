@@ -9,7 +9,7 @@ if (
     !isset($_SESSION['logged_in']) ||
     $_SESSION['logged_in'] !== true ||
     !isset($_SESSION['role']) ||
-    $_SESSION['role'] !== 'customer'
+    $_SESSION['role'] !== 'pelanggan'
 ) {
     header('Location: login.php?role=customer');
     exit;
