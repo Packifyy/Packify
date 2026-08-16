@@ -1,21 +1,16 @@
 <?php
-session_start();
+require_once __DIR__ . '/functions.php';
 
-/* =====================================================
-   CUSTOMER ACCESS PROTECTION
-===================================================== */
+start_session_safe();
 
-if (
-    !isset($_SESSION['logged_in']) ||
-    $_SESSION['logged_in'] !== true ||
-    !isset($_SESSION['role']) ||
-    $_SESSION['role'] !== 'pelanggan'
-) {
+$user = current_user();
+
+if ($user === null || ($user['role'] ?? '') !== 'pelanggan') {
     header('Location: login.php?role=customer');
     exit;
 }
 
-$name = $_SESSION['identity'] ?? 'Customer';
+$name = $user['nama'] ?? 'Customer';
 
 $firstName = explode(' ', trim($name))[0];
 
@@ -26,6 +21,245 @@ $initial = strtoupper(
         1
     )
 );
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_profile') {
+
+    $newName = trim($_POST['name'] ?? '');
+    $newPhone = trim($_POST['phone'] ?? '');
+    $newAddress = trim($_POST['address'] ?? '');
+
+    if ($newName === '' || $newPhone === '' || $newAddress === '') {
+        die('Data profile tidak lengkap.');
+    }
+
+    $stmt = mysqli_prepare(
+        $db,
+        'UPDATE users
+         SET nama = ?, telpon = ?, alamat = ?
+         WHERE id = ?'
+    );
+
+    mysqli_stmt_bind_param(
+        $stmt,
+        'sssi',
+        $newName,
+        $newPhone,
+        $newAddress,
+        $user['id']
+    );
+
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_close($stmt);
+
+    header('Location: customer-dashboard.php?profile=updated');
+    exit;
+}
+
+if (
+    $_SERVER['REQUEST_METHOD'] === 'POST' &&
+    ($_POST['action'] ?? '') === 'create_shipment'
+) {
+
+    $description = trim($_POST['description'] ?? '');
+    $recipient = trim($_POST['recipient'] ?? '');
+    $address = trim($_POST['address'] ?? '');
+    $quantity = (int) ($_POST['quantity'] ?? 1);
+    $fragile = isset($_POST['fragile']) ? 1 : 0;
+
+    if (
+        $description === '' ||
+        $recipient === '' ||
+        $address === '' ||
+        $quantity < 1
+    ) {
+        die('Data shipment tidak lengkap.');
+    }
+
+    /*
+     * Generate tracking number
+     */
+    $trackingNumber =
+        'PKF-' .
+        date('Ymd') .
+        '-' .
+        strtoupper(bin2hex(random_bytes(3)));
+
+
+    /*
+     * Data pengirim
+     */
+    $senderName = $user['nama'] ?? '';
+    $origin = $user['alamat'] ?? '';
+
+
+    /*
+     * Status awal shipment
+     */
+    $status = 'pending';
+
+
+    /*
+     * INSERT ke database
+     */
+    $stmt = mysqli_prepare(
+        $db,
+        'INSERT INTO shipments
+        (
+            user_id,
+            tracking_number,
+            sender_name,
+            receiver_name,
+            origin,
+            destination,
+            status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+
+
+    if (!$stmt) {
+        die(
+            'Prepare statement gagal: ' .
+            mysqli_error($db)
+        );
+    }
+
+
+    mysqli_stmt_bind_param(
+        $stmt,
+        'issssss',
+        $user['id'],
+        $trackingNumber,
+        $senderName,
+        $recipient,
+        $origin,
+        $address,
+        $status
+    );
+
+
+    if (!mysqli_stmt_execute($stmt)) {
+
+        $error = mysqli_stmt_error($stmt);
+
+        mysqli_stmt_close($stmt);
+
+        die(
+            'Gagal membuat shipment: ' .
+            htmlspecialchars($error)
+        );
+    }
+
+
+    mysqli_stmt_close($stmt);
+
+
+    /*
+     * Redirect supaya POST tidak dikirim ulang
+     */
+    header(
+        'Location: customer-dashboard.php?shipment=created'
+    );
+
+    exit;
+}
+
+if (
+    $_SERVER['REQUEST_METHOD'] === 'POST' &&
+    ($_POST['action'] ?? '') === 'update_shipment'
+) {
+
+    $shipmentId = (int) ($_POST['shipment_id'] ?? 0);
+
+    $recipient = trim($_POST['recipient'] ?? '');
+    $address = trim($_POST['address'] ?? '');
+
+    if (
+        $shipmentId < 1 ||
+        $recipient === '' ||
+        $address === ''
+    ) {
+        die('Data shipment tidak lengkap.');
+    }
+
+    $stmt = mysqli_prepare(
+        $db,
+        'UPDATE shipments
+         SET receiver_name = ?, destination = ?
+         WHERE id = ?
+         AND user_id = ?
+         AND status = "pending"'
+    );
+
+    if (!$stmt) {
+        die('Prepare statement gagal: ' . mysqli_error($db));
+    }
+
+    mysqli_stmt_bind_param(
+        $stmt,
+        'ssii',
+        $recipient,
+        $address,
+        $shipmentId,
+        $user['id']
+    );
+
+    if (!mysqli_stmt_execute($stmt)) {
+        $error = mysqli_stmt_error($stmt);
+        mysqli_stmt_close($stmt);
+
+        die(
+            'Gagal mengedit shipment: ' .
+            htmlspecialchars($error)
+        );
+    }
+
+    mysqli_stmt_close($stmt);
+
+    header(
+        'Location: customer-dashboard.php?shipment=updated'
+    );
+
+    exit;
+}
+
+$customerShipments = [];
+
+$stmt = mysqli_prepare(
+    $db,
+    'SELECT
+        id,
+        tracking_number,
+        sender_name,
+        receiver_name,
+        origin,
+        destination,
+        status
+     FROM shipments
+     WHERE user_id = ?
+     ORDER BY id DESC'
+);
+
+if ($stmt) {
+
+    mysqli_stmt_bind_param(
+        $stmt,
+        'i',
+        $user['id']
+    );
+
+    mysqli_stmt_execute($stmt);
+
+    $result = mysqli_stmt_get_result($stmt);
+
+    while ($row = mysqli_fetch_assoc($result)) {
+
+        $customerShipments[] = $row;
+
+    }
+
+    mysqli_stmt_close($stmt);
+}
 ?>
 
 <!DOCTYPE html>
@@ -281,9 +515,131 @@ $initial = strtoupper(
     </div>
 
     <div
-        class="shipment-list"
-        id="customerShipmentList"
-    ></div>
+    class="shipment-list"
+    id="customerShipmentList"
+>
+
+    <?php if (empty($customerShipments)): ?>
+
+        <div class="empty-state">
+
+            <span>○</span>
+
+            <strong>
+                No shipments yet
+            </strong>
+
+            <p>
+                Create your first shipment to get started.
+            </p>
+
+        </div>
+
+    <?php else: ?>
+
+        <?php foreach ($customerShipments as $shipment): ?>
+
+            <div class="shipment-row">
+
+                <div class="shipment-main">
+
+                    <strong>
+                        <?= htmlspecialchars(
+                            $shipment['tracking_number']
+                        ) ?>
+                    </strong>
+
+                    <span>
+                        <?= htmlspecialchars(
+                            $shipment['sender_name']
+                        ) ?>
+                    </span>
+
+                </div>
+
+
+                <div class="shipment-recipient">
+
+                    <strong>
+                        <?= htmlspecialchars(
+                            $shipment['receiver_name']
+                        ) ?>
+                    </strong>
+
+                    <span>
+                        <?= htmlspecialchars(
+                            $shipment['destination']
+                        ) ?>
+                    </span>
+
+                </div>
+
+
+                <span
+                    class="status
+                    <?= $shipment['status'] === 'delivered'
+                        ? 'delivered'
+                        : '' ?>"
+                >
+                    <?= htmlspecialchars(
+                        ucfirst($shipment['status'])
+                    ) ?>
+                </span>
+
+
+                <div class="shipment-actions">
+
+    <button
+        type="button"
+        class="table-action"
+        data-view-shipment="<?= htmlspecialchars(
+            $shipment['tracking_number'],
+            ENT_QUOTES
+        ) ?>"
+    >
+        View
+    </button>
+
+    <?php if ($shipment['status'] === 'pending'): ?>
+
+        <button
+            type="button"
+            class="table-action"
+            data-edit-shipment="<?= (int) $shipment['id'] ?>"
+            data-recipient="<?= htmlspecialchars(
+                $shipment['receiver_name'],
+                ENT_QUOTES
+            ) ?>"
+            data-address="<?= htmlspecialchars(
+                $shipment['destination'],
+                ENT_QUOTES
+            ) ?>"
+        >
+            Edit
+        </button>
+
+        <button
+            type="button"
+            class="table-action"
+            data-cancel-shipment="<?= htmlspecialchars(
+                $shipment['tracking_number'],
+                ENT_QUOTES
+            ) ?>"
+        >
+            Cancel
+        </button>
+
+    <?php endif; ?>
+
+</div>
+
+            </div>
+
+        <?php endforeach; ?>
+
+    <?php endif; ?>
+
+</div>
 
 </section>
 
@@ -756,9 +1112,12 @@ $initial = strtoupper(
 
 
         <form
-            class="packify-form"
-            id="profileForm"
-        >
+    class="packify-form"
+    id="profileForm"
+    method="POST"
+    action="customer-dashboard.php"
+>
+    <input type="hidden" name="action" value="update_profile">
 
             <div class="form-field">
 
@@ -966,7 +1325,6 @@ $initial = strtoupper(
         <div class="packify-modal-header">
 
             <div>
-
                 <span class="small-label">
                     SHIPMENT
                 </span>
@@ -974,7 +1332,6 @@ $initial = strtoupper(
                 <h2>
                     Create shipment
                 </h2>
-
             </div>
 
             <button
@@ -991,7 +1348,15 @@ $initial = strtoupper(
         <form
             class="packify-form"
             id="shipmentForm"
+            method="POST"
+            action="customer-dashboard.php"
         >
+
+            <input
+                type="hidden"
+                name="action"
+                value="create_shipment"
+            >
 
             <div class="form-field">
 
@@ -1062,6 +1427,7 @@ $initial = strtoupper(
                 <input
                     type="checkbox"
                     name="fragile"
+                    value="1"
                 >
 
                 Package is fragile
@@ -1093,8 +1459,6 @@ $initial = strtoupper(
     </div>
 
 </div>
-
-
 
 <!-- =================================================
      SHIPMENT DETAIL

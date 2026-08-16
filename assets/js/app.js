@@ -468,561 +468,374 @@ document.addEventListener("DOMContentLoaded", () => {
 
     }
 
-
-
-    /* =====================================================
-       CUSTOMER SHIPMENT STORAGE
-    ===================================================== */
-
-    const defaultShipments = [
-
-        {
-            id: "PKF-2847-01",
-            description: "Dokumen kantor",
-            recipient: "Customer",
-            address: "Bandung, Jawa Barat",
-            fragile: false,
-            quantity: 1,
-            status: "sedang_dikirim",
-            date: "14 Aug 2026"
-        },
-
-        {
-            id: "PKF-2831-09",
-            description: "Pakaian",
-            recipient: "Customer",
-            address: "Jakarta Selatan",
-            fragile: false,
-            quantity: 2,
-            status: "sudah_sampai",
-            date: "08 Aug 2026"
-        }
-
-    ];
-
-
-    function getShipments() {
-
-        const saved =
-            localStorage.getItem("packify_shipments");
-
-
-        if (!saved) {
-
-            localStorage.setItem(
-                "packify_shipments",
-                JSON.stringify(defaultShipments)
-            );
-
-            return defaultShipments;
-        }
-
-
-        try {
-
-            return JSON.parse(saved);
-
-        } catch {
-
-            return defaultShipments;
-
-        }
-
-    }
-
-
-    function saveShipments(shipments) {
-
-        localStorage.setItem(
-            "packify_shipments",
-            JSON.stringify(shipments)
-        );
-
-    }
-
-
-
-    /* =====================================================
-       CUSTOMER — ADD SHIPMENT
-    ===================================================== */
-
-    const shipmentForm =
-        document.getElementById("shipmentForm");
-
-
-    if (shipmentForm) {
-
-        shipmentForm.addEventListener("submit", event => {
-
-            event.preventDefault();
-
-
-            const formData =
-                new FormData(shipmentForm);
-
-
-            const shipments =
-                getShipments();
-
-
-            const shipment = {
-
-                id:
-                    generateShipmentId(),
-
-                description:
-                    formData.get("description")?.trim(),
-
-                recipient:
-                    formData.get("recipient")?.trim(),
-
-                address:
-                    formData.get("address")?.trim(),
-
-                fragile:
-                    formData.get("fragile") === "on",
-
-                quantity:
-                    Number(formData.get("quantity")) || 1,
-
-                status:
-                    "belum_dikirim",
-
-                date:
-                    formatDate(new Date())
-
-            };
-
-
-            shipments.unshift(shipment);
-
-            saveShipments(shipments);
-
-
-            shipmentForm.reset();
-
-
-            closeModal(
-                document.getElementById("shipmentFormModal")
-            );
-
-
-            renderCustomerShipments();
-
-
-            showToast(
-                `Shipment ${shipment.id} berhasil dibuat.`
-            );
-
-        });
-
-    }
-
-
-
-    function generateShipmentId() {
-
-        const random =
-            Math.floor(
-                1000 +
-                Math.random() * 9000
-            );
-
-
-        return `PKF-${random}-01`;
-
-    }
-
-
-
-    function formatDate(date) {
-
-        return date.toLocaleDateString(
-            "en-GB",
-            {
-                day: "2-digit",
-                month: "short",
-                year: "numeric"
-            }
-        );
-
-    }
-
-
-
-    /* =====================================================
-       CUSTOMER — RENDER SHIPMENTS
-    ===================================================== */
-
-    window.renderCustomerShipments =
-        function() {
-
-            const container =
-                document.getElementById(
-                    "customerShipmentList"
-                );
-
-
-            if (!container) return;
-
-
-            const shipments =
-                getShipments();
-
-
-            container.innerHTML = "";
-
-
-            if (!shipments.length) {
-
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <span>○</span>
-
-                        <strong>
-                            No shipments yet
-                        </strong>
-
-                        <p>
-                            Create your first shipment to get started.
-                        </p>
-                    </div>
-                `;
-
-                return;
-            }
-
-
-            shipments.forEach(shipment => {
-
-                const row =
-                    document.createElement("div");
-
-
-                row.className =
-                    "shipment-row";
-
-
-                row.innerHTML = `
-
-                    <div class="shipment-main">
-
-                        <strong>
-                            ${escapeHTML(shipment.id)}
-                        </strong>
-
-                        <span>
-                            ${escapeHTML(shipment.description || "Package")}
-                        </span>
-
-                    </div>
-
-
-                    <div class="shipment-recipient">
-
-                        <strong>
-                            ${escapeHTML(shipment.recipient)}
-                        </strong>
-
-                        <span>
-                            ${escapeHTML(shipment.address)}
-                        </span>
-
-                    </div>
-
-
-                    <span class="status ${shipment.status === "sudah_sampai" ? "delivered" : ""}">
-                        ${getStatusLabel(shipment.status)}
-                    </span>
-
-
-                    <div class="shipment-actions">
-
-                        <button
-                            type="button"
-                            class="table-action"
-                            data-view-shipment="${shipment.id}"
-                        >
-                            View
-                        </button>
-
-                        ${
-                            shipment.status === "belum_dikirim"
-                            ? `
-                                <button
-                                    type="button"
-                                    class="table-action"
-                                    data-edit-shipment="${shipment.id}"
-                                >
-                                    Edit
-                                </button>
-
-                                <button
-                                    type="button"
-                                    class="table-action danger"
-                                    data-cancel-shipment="${shipment.id}"
-                                >
-                                    Cancel
-                                </button>
-                            `
-                            : ""
-                        }
-
-                    </div>
-
-                `;
-
-
-                container.appendChild(row);
-
-            });
-
-        };
-
-
-    renderCustomerShipments();
-
-
-
-    /* =====================================================
-       CUSTOMER SHIPMENT ACTIONS
-    ===================================================== */
-
     document.addEventListener("click", event => {
 
+    const editButton =
+        event.target.closest("[data-edit-shipment]");
 
-        const viewButton =
-            event.target.closest(
-                "[data-view-shipment]"
+    if (!editButton) return;
+
+    const form =
+        document.getElementById("shipmentForm");
+
+    if (!form) return;
+
+    const modal =
+        document.getElementById("shipmentFormModal");
+
+    const actionInput =
+        document.getElementById("shipmentAction");
+
+    const shipmentId =
+        document.getElementById("shipmentId");
+
+    const submitButton =
+        document.getElementById("shipmentSubmitButton");
+
+
+    shipmentId.value =
+        editButton.dataset.editShipment;
+
+    actionInput.value =
+        "update_shipment";
+
+
+    const recipient =
+        form.querySelector('[name="recipient"]');
+
+    const address =
+        form.querySelector('[name="address"]');
+
+
+    if (recipient) {
+        recipient.value =
+            editButton.dataset.recipient || "";
+    }
+
+    if (address) {
+        address.value =
+            editButton.dataset.address || "";
+    }
+
+
+    const title =
+        modal?.querySelector("h2");
+
+    if (title) {
+        title.textContent =
+            "Edit shipment";
+    }
+
+
+    if (submitButton) {
+        submitButton.textContent =
+            "Update shipment";
+    }
+
+
+    openModal(modal);
+
+});
+});
+/* =====================================================
+   CUSTOMER — DATABASE SHIPMENT
+===================================================== */
+
+const shipmentForm =
+    document.getElementById("shipmentForm");
+
+
+/*
+|--------------------------------------------------------------------------
+| CREATE SHIPMENT
+|--------------------------------------------------------------------------
+| Form dikirim langsung ke PHP.
+| Jangan pakai preventDefault().
+| PHP yang akan INSERT ke MySQL.
+*/
+
+if (shipmentForm) {
+
+    shipmentForm.addEventListener("submit", event => {
+
+        const submitButton =
+            shipmentForm.querySelector(
+                'button[type="submit"]'
             );
 
+        if (submitButton) {
 
-        if (viewButton) {
+            submitButton.disabled = true;
 
-            const id =
-                viewButton.dataset.viewShipment;
-
-            openShipmentDetail(id);
-
-        }
-
-
-        const editButton =
-            event.target.closest(
-                "[data-edit-shipment]"
-            );
-
-
-        if (editButton) {
-
-            const id =
-                editButton.dataset.editShipment;
-
-            editShipment(id);
-
-        }
-
-
-        const cancelButton =
-            event.target.closest(
-                "[data-cancel-shipment]"
-            );
-
-
-        if (cancelButton) {
-
-            const id =
-                cancelButton.dataset.cancelShipment;
-
-            cancelShipment(id);
+            submitButton.textContent =
+                "Saving...";
 
         }
 
     });
 
+}
 
 
-    function editShipment(id) {
+/*
+|--------------------------------------------------------------------------
+| VIEW SHIPMENT
+|--------------------------------------------------------------------------
+*/
 
-        const shipment =
-            getShipments()
-                .find(item => item.id === id);
+document.addEventListener("click", event => {
+
+    const viewButton =
+        event.target.closest(
+            "[data-view-shipment]"
+        );
+
+    if (!viewButton) return;
+
+    const id =
+        viewButton.dataset.viewShipment;
+
+    openShipmentDetail(id);
+
+});
 
 
-        if (!shipment) return;
+/*
+|--------------------------------------------------------------------------
+| CANCEL SHIPMENT
+|--------------------------------------------------------------------------
+|
+| Cancel dikirim ke PHP.
+|
+*/
+
+document.addEventListener("click", event => {
+
+    const cancelButton =
+        event.target.closest(
+            "[data-cancel-shipment]"
+        );
+
+    if (!cancelButton) return;
+
+    const id =
+        cancelButton.dataset.cancelShipment;
+
+    if (!id) return;
+
+    const confirmed =
+        confirm(
+            `Batalkan shipment ${id}?`
+        );
+
+    if (!confirmed) return;
 
 
-        const form =
-            document.getElementById(
-                "shipmentForm"
-            );
+    const form =
+        document.createElement("form");
+
+    form.method = "POST";
+    form.action = "customer-dashboard.php";
+    form.style.display = "none";
 
 
-        if (!form) return;
+    const action =
+        document.createElement("input");
+
+    action.type = "hidden";
+    action.name = "action";
+    action.value = "cancel_shipment";
 
 
-        form.dataset.editing = id;
+    const tracking =
+        document.createElement("input");
+
+    tracking.type = "hidden";
+    tracking.name = "tracking_number";
+    tracking.value = id;
 
 
+    form.appendChild(action);
+    form.appendChild(tracking);
+
+    document.body.appendChild(form);
+
+    form.submit();
+
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| EDIT SHIPMENT
+|--------------------------------------------------------------------------
+|
+| Edit juga dikirim ke PHP.
+|
+*/
+
+document.addEventListener("click", event => {
+
+    const editButton =
+        event.target.closest(
+            "[data-edit-shipment]"
+        );
+
+    if (!editButton) return;
+
+    const id =
+        editButton.dataset.editShipment;
+
+    const form =
+        document.getElementById(
+            "shipmentForm"
+        );
+
+    if (!form) return;
+
+
+    form.dataset.editing = id;
+
+
+    const description =
+        editButton.dataset.description || "";
+
+    const recipient =
+        editButton.dataset.recipient || "";
+
+    const address =
+        editButton.dataset.address || "";
+
+    const quantity =
+        editButton.dataset.quantity || "1";
+
+
+    const descriptionInput =
         form.querySelector(
             '[name="description"]'
-        ).value =
-            shipment.description;
+        );
 
-
+    const recipientInput =
         form.querySelector(
             '[name="recipient"]'
-        ).value =
-            shipment.recipient;
+        );
 
-
+    const addressInput =
         form.querySelector(
             '[name="address"]'
-        ).value =
-            shipment.address;
+        );
 
-
+    const quantityInput =
         form.querySelector(
             '[name="quantity"]'
-        ).value =
-            shipment.quantity;
-
-
-        const fragile =
-            form.querySelector(
-                '[name="fragile"]'
-            );
-
-
-        if (fragile) {
-            fragile.checked = shipment.fragile;
-        }
-
-
-        const title =
-            document.querySelector(
-                "#shipmentFormModal h2"
-            );
-
-
-        if (title) {
-            title.textContent = "Edit shipment";
-        }
-
-
-        openModal(
-            document.getElementById(
-                "shipmentFormModal"
-            )
         );
+
+
+    if (descriptionInput)
+        descriptionInput.value =
+            description;
+
+    if (recipientInput)
+        recipientInput.value =
+            recipient;
+
+    if (addressInput)
+        addressInput.value =
+            address;
+
+    if (quantityInput)
+        quantityInput.value =
+            quantity;
+
+
+    const title =
+        document.querySelector(
+            "#shipmentFormModal h2"
+        );
+
+    if (title) {
+
+        title.textContent =
+            "Edit shipment";
 
     }
 
 
+    openModal(
+        document.getElementById(
+            "shipmentFormModal"
+        )
+    );
 
-    function cancelShipment(id) {
-
-        const shipment =
-            getShipments()
-                .find(item => item.id === id);
-
-
-        if (!shipment) return;
+});
 
 
-        if (
-            shipment.status !==
-            "belum_dikirim"
-        ) {
+/*
+|--------------------------------------------------------------------------
+| SHIPMENT DETAIL
+|--------------------------------------------------------------------------
+*/
 
-            showToast(
-                "Shipment yang sudah diproses tidak dapat dibatalkan.",
-                "error"
-            );
+function openShipmentDetail(id) {
 
-            return;
-        }
-
-
-        const confirmed =
-            confirm(
-                `Batalkan shipment ${id}?`
-            );
-
-
-        if (!confirmed) return;
-
-
-        const shipments =
-            getShipments()
-                .filter(item => item.id !== id);
-
-
-        saveShipments(shipments);
-
-
-        renderCustomerShipments();
-
-
-        showToast(
-            `Shipment ${id} dibatalkan.`
+    const modal =
+        document.getElementById(
+            "shipmentDetailModal"
         );
+
+    if (!modal) return;
+
+
+    const idElement =
+        document.getElementById(
+            "detailShipmentId"
+        );
+
+
+    if (idElement) {
+
+        idElement.textContent =
+            id;
 
     }
 
 
+    /*
+    | Kalau detail sudah dirender PHP,
+    | kita ambil data dari row yang diklik.
+    */
 
-    /* =====================================================
-       SHIPMENT DETAIL
-    ===================================================== */
-
-    function openShipmentDetail(id) {
-
-        const shipment =
-            getShipments()
-                .find(item => item.id === id);
-
-
-        if (!shipment) return;
-
-
-        const modal =
-            document.getElementById(
-                "shipmentDetailModal"
-            );
-
-
-        if (!modal) return;
-
-
-        setText(
-            "detailShipmentId",
-            shipment.id
+    const button =
+        document.querySelector(
+            `[data-view-shipment="${CSS.escape(id)}"]`
         );
 
+
+    if (button) {
 
         setText(
             "detailDescription",
-            shipment.description
+            button.dataset.description
         );
-
 
         setText(
             "detailRecipient",
-            shipment.recipient
+            button.dataset.recipient
         );
-
 
         setText(
             "detailAddress",
-            shipment.address
+            button.dataset.address
         );
-
 
         setText(
             "detailQuantity",
-            shipment.quantity
+            button.dataset.quantity
         );
+
+
+        const status =
+            button.dataset.status || "";
 
 
         const badge =
@@ -1034,675 +847,562 @@ document.addEventListener("DOMContentLoaded", () => {
         if (badge) {
 
             badge.textContent =
-                getStatusLabel(
-                    shipment.status
-                );
+                getStatusLabel(status);
 
             badge.className =
                 "status " +
                 (
-                    shipment.status ===
-                    "sudah_sampai"
+                    status === "sudah_sampai"
                         ? "delivered"
                         : ""
                 );
 
         }
 
-
-        openModal(modal);
-
     }
 
 
+    openModal(modal);
 
-    function setText(id, value) {
-
-        const element =
-            document.getElementById(id);
-
-        if (element) {
-            element.textContent =
-                value ?? "-";
-        }
-
-    }
+}
 
 
+/*
+|--------------------------------------------------------------------------
+| TEXT HELPER
+|--------------------------------------------------------------------------
+*/
 
-    function getStatusLabel(status) {
+function setText(id, value) {
 
-        const labels = {
+    const element =
+        document.getElementById(id);
 
-            belum_dikirim:
-                "Not shipped",
+    if (element) {
 
-            sedang_dikirim:
-                "In transit",
-
-            sudah_sampai:
-                "Delivered"
-
-        };
-
-
-        return labels[status] || status;
+        element.textContent =
+            value || "-";
 
     }
 
+}
 
 
-    /* =====================================================
-       EDIT FORM SUBMIT
-    ===================================================== */
+/*
+|--------------------------------------------------------------------------
+| STATUS
+|--------------------------------------------------------------------------
+*/
 
-    if (shipmentForm) {
+function getStatusLabel(status) {
 
-        shipmentForm.addEventListener(
-            "submit",
-            event => {
+    const labels = {
 
-                const editingId =
-                    shipmentForm.dataset.editing;
+        belum_dikirim:
+            "Not shipped",
 
+        sedang_dikirim:
+            "In transit",
 
-                if (!editingId) return;
+        sudah_sampai:
+            "Delivered"
 
+    };
 
-                event.preventDefault();
 
-
-                const formData =
-                    new FormData(shipmentForm);
-
-
-                const shipments =
-                    getShipments();
-
-
-                const index =
-                    shipments.findIndex(
-                        item =>
-                            item.id === editingId
-                    );
-
-
-                if (index === -1) return;
-
-
-                shipments[index].description =
-                    formData.get("description")
-                        ?.trim();
-
-
-                shipments[index].recipient =
-                    formData.get("recipient")
-                        ?.trim();
-
-
-                shipments[index].address =
-                    formData.get("address")
-                        ?.trim();
-
-
-                shipments[index].quantity =
-                    Number(
-                        formData.get("quantity")
-                    ) || 1;
-
-
-                shipments[index].fragile =
-                    formData.get("fragile") === "on";
-
-
-                saveShipments(shipments);
-
-
-                delete shipmentForm.dataset.editing;
-
-
-                shipmentForm.reset();
-
-
-                const title =
-                    document.querySelector(
-                        "#shipmentFormModal h2"
-                    );
-
-
-                if (title) {
-                    title.textContent =
-                        "Create shipment";
-                }
-
-
-                closeModal(
-                    document.getElementById(
-                        "shipmentFormModal"
-                    )
-                );
-
-
-                renderCustomerShipments();
-
-
-                showToast(
-                    `Shipment ${editingId} berhasil diperbarui.`
-                );
-
-            }
-        );
-
-    }
-
-
-
-    /* =====================================================
-       COURIER DATA
-    ===================================================== */
-
-    const courierShipments = [
-
-        {
-            id: "PKF-2850-03",
-            sender: "Customer",
-            recipient: "Customer",
-            from: "Jakarta",
-            to: "Bekasi",
-            status: "belum_dikirim"
-        },
-
-        {
-            id: "PKF-2847-01",
-            sender: "Customer",
-            recipient: "Customer",
-            from: "Jakarta",
-            to: "Bandung",
-            status: "belum_dikirim"
-        },
-
-        {
-            id: "PKF-2846-22",
-            sender: "Customer",
-            recipient: "Customer",
-            from: "Jakarta",
-            to: "Cimahi",
-            status: "sedang_dikirim"
-        },
-
-        {
-            id: "PKF-2841-18",
-            sender: "Customer",
-            recipient: "Customer",
-            from: "Depok",
-            to: "Bandung",
-            status: "sudah_sampai"
-        }
-
-    ];
-
-
-    function getCourierShipments() {
-
-        const saved =
-            localStorage.getItem(
-                "packify_courier_shipments"
-            );
-
-
-        if (!saved) {
-
-            localStorage.setItem(
-                "packify_courier_shipments",
-                JSON.stringify(courierShipments)
-            );
-
-            return courierShipments;
-
-        }
-
-
-        return JSON.parse(saved);
-
-    }
-
-
-    function saveCourierShipments(data) {
-
-        localStorage.setItem(
-            "packify_courier_shipments",
-            JSON.stringify(data)
-        );
-
-    }
-
-
-
-    /* =====================================================
-       COURIER — TAKE SHIPMENT
-    ===================================================== */
-
-    document.addEventListener(
-        "click",
-        event => {
-
-            const takeButton =
-                event.target.closest(
-                    "[data-take-shipment]"
-                );
-
-
-            if (!takeButton) return;
-
-
-            const id =
-                takeButton.dataset.takeShipment;
-
-
-            const shipments =
-                getCourierShipments();
-
-
-            const shipment =
-                shipments.find(
-                    item => item.id === id
-                );
-
-
-            if (!shipment) return;
-
-
-            if (
-                shipment.status !==
-                "belum_dikirim"
-            ) {
-
-                showToast(
-                    "Paket ini sudah diambil courier.",
-                    "error"
-                );
-
-                return;
-
-            }
-
-
-            shipment.status =
-                "sedang_dikirim";
-
-
-            saveCourierShipments(
-                shipments
-            );
-
-
-            renderCourierShipments();
-
-
-            showToast(
-                `Paket ${id} berhasil diambil.`
-            );
-
-        }
+    return (
+        labels[status] ||
+        status ||
+        "-"
     );
 
+}
 
 
-    /* =====================================================
-       COURIER — CANCEL TAKE
-    ===================================================== */
+/*
+|--------------------------------------------------------------------------
+| ESCAPE HTML
+|--------------------------------------------------------------------------
+*/
 
-    document.addEventListener(
-        "click",
-        event => {
+function escapeHTML(value) {
 
-            const button =
-                event.target.closest(
-                    "[data-cancel-take]"
-                );
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
 
+}
 
-            if (!button) return;
 
+/* =====================================================
+   COURIER — DATABASE SHIPMENTS
+===================================================== */
 
-            const id =
-                button.dataset.cancelTake;
+async function getCourierShipments() {
 
+    try {
 
-            const shipments =
-                getCourierShipments();
-
-
-            const shipment =
-                shipments.find(
-                    item => item.id === id
-                );
-
-
-            if (!shipment) return;
-
-
-            shipment.status =
-                "belum_dikirim";
-
-
-            saveCourierShipments(
-                shipments
-            );
-
-
-            renderCourierShipments();
-
-
-            showToast(
-                `Pengambilan ${id} dibatalkan.`
-            );
-
-        }
-    );
-
-
-
-    /* =====================================================
-       COURIER — MARK AS DELIVERED
-    ===================================================== */
-
-    document.addEventListener(
-        "click",
-        event => {
-
-            const button =
-                event.target.closest(
-                    "[data-complete-shipment]"
-                );
-
-
-            if (!button) return;
-
-
-            const id =
-                button.dataset.completeShipment;
-
-
-            const shipments =
-                getCourierShipments();
-
-
-            const shipment =
-                shipments.find(
-                    item => item.id === id
-                );
-
-
-            if (!shipment) return;
-
-
-            if (
-                shipment.status !==
-                "sedang_dikirim"
-            ) {
-
-                showToast(
-                    "Paket belum dalam status pengiriman.",
-                    "error"
-                );
-
-                return;
-
-            }
-
-
-            shipment.status =
-                "sudah_sampai";
-
-
-            saveCourierShipments(
-                shipments
-            );
-
-
-            renderCourierShipments();
-
-
-            showToast(
-                `Shipment ${id} ditandai sudah sampai.`
-            );
-
-        }
-    );
-
-
-
-    /* =====================================================
-       COURIER — RENDER
-    ===================================================== */
-
-    window.renderCourierShipments =
-        function() {
-
-            const container =
-                document.getElementById(
-                    "courierShipmentList"
-                );
-
-
-            if (!container) return;
-
-
-            const shipments =
-                getCourierShipments();
-
-
-            container.innerHTML = "";
-
-
-            shipments.forEach(shipment => {
-
-                const row =
-                    document.createElement("div");
-
-
-                row.className =
-                    "shipment-row";
-
-
-                row.innerHTML = `
-
-                    <div class="shipment-main">
-
-                        <strong>
-                            ${escapeHTML(shipment.id)}
-                        </strong>
-
-                        <span>
-                            ${escapeHTML(shipment.sender)}
-                        </span>
-
-                    </div>
-
-
-                    <div class="shipment-recipient">
-
-                        <strong>
-                            ${escapeHTML(shipment.from)}
-                            →
-                            ${escapeHTML(shipment.to)}
-                        </strong>
-
-                        <span>
-                            ${escapeHTML(shipment.recipient)}
-                        </span>
-
-                    </div>
-
-
-                    <span class="status ${
-                        shipment.status ===
-                        "sudah_sampai"
-                            ? "delivered"
-                            : ""
-                    }">
-
-                        ${getStatusLabel(shipment.status)}
-
-                    </span>
-
-
-                    <div class="shipment-actions">
-
-                        <button
-                            type="button"
-                            class="table-action"
-                            data-view-courier="${shipment.id}"
-                        >
-                            View
-                        </button>
-
-                        ${
-                            shipment.status ===
-                            "belum_dikirim"
-                            ? `
-                                <button
-                                    type="button"
-                                    class="table-action"
-                                    data-take-shipment="${shipment.id}"
-                                >
-                                    Take
-                                </button>
-                            `
-                            : ""
-                        }
-
-                        ${
-                            shipment.status ===
-                            "sedang_dikirim"
-                            ? `
-                                <button
-                                    type="button"
-                                    class="table-action"
-                                    data-cancel-take="${shipment.id}"
-                                >
-                                    Cancel
-                                </button>
-
-                                <button
-                                    type="button"
-                                    class="table-action primary"
-                                    data-complete-shipment="${shipment.id}"
-                                >
-                                    Delivered
-                                </button>
-                            `
-                            : ""
-                        }
-
-                    </div>
-
-                `;
-
-
-                container.appendChild(row);
-
-            });
-
-        };
-
-
-    renderCourierShipments();
-
-
-
-    /* =====================================================
-       COURIER TABS
-    ===================================================== */
-
-    const courierTabs =
-        document.querySelectorAll(
-            "[data-courier-tab]"
-        );
-
-
-    courierTabs.forEach(tab => {
-
-        tab.addEventListener(
-            "click",
-            () => {
-
-                courierTabs.forEach(item => {
-
-                    item.classList.remove(
-                        "active"
-                    );
-
-                });
-
-
-                tab.classList.add(
-                    "active"
-                );
-
-
-                const target =
-                    tab.dataset.courierTab;
-
-
-                const rows =
-                    document.querySelectorAll(
-                        "#courierShipmentList .shipment-row"
-                    );
-
-
-                rows.forEach(row => {
-
-                    if (target === "all") {
-
-                        row.style.display = "";
-
-                        return;
-
-                    }
-
-
-                    const status =
-                        row.querySelector(
-                            ".status"
-                        )?.textContent
-                            .trim()
-                            .toLowerCase();
-
-
-                    if (
-                        target === "mine" &&
-                        status === "in transit"
-                    ) {
-
-                        row.style.display = "";
-
-                    } else {
-
-                        row.style.display =
-                            target === "mine"
-                                ? "none"
-                                : "";
-
-                    }
-                });
+        const response = await fetch(
+            "courier-shipments.php",
+            {
+                method: "GET",
+                cache: "no-store"
             }
         );
+
+        if (!response.ok) {
+            throw new Error("Gagal mengambil shipment.");
+        }
+
+        const data = await response.json();
+
+        return data.shipments || [];
+
+    } catch (error) {
+
+        console.error(error);
+
+        showToast(
+            "Gagal mengambil data shipment.",
+            "error"
+        );
+
+        return [];
+    }
+}
+
+
+/* =====================================================
+   UPDATE STATUS SHIPMENT
+===================================================== */
+
+async function updateCourierShipment(shipmentId, action) {
+
+    const formData = new FormData();
+
+    formData.append("shipment_id", shipmentId);
+    formData.append("action", action);
+
+    try {
+
+        const response = await fetch(
+            "courier-update-shipment.php",
+            {
+                method: "POST",
+                body: formData
+            }
+        );
+
+        const data = await response.json();
+
+        if (!data.success) {
+
+            showToast(
+                data.message || "Gagal mengubah status shipment.",
+                "error"
+            );
+
+            return;
+        }
+
+        showToast(data.message);
+
+        await renderCourierShipments();
+
+    } catch (error) {
+
+        console.error(error);
+
+        showToast(
+            "Gagal menghubungi server.",
+            "error"
+        );
+    }
+}
+
+
+/* =====================================================
+   RENDER COURIER
+===================================================== */
+
+window.renderCourierShipments = async function () {
+
+    const container =
+        document.getElementById(
+            "courierShipmentList"
+        );
+
+    if (!container) return;
+
+    const shipments =
+        await getCourierShipments();
+
+    container.innerHTML = "";
+
+    if (!shipments.length) {
+
+        container.innerHTML = `
+            <div class="empty-state">
+                <span>○</span>
+
+                <strong>
+                    No shipments available
+                </strong>
+
+                <p>
+                    New customer shipments will appear here.
+                </p>
+            </div>
+        `;
+
+        return;
+    }
+
+
+    shipments.forEach(shipment => {
+
+        const row =
+            document.createElement("div");
+
+        row.className =
+            "shipment-row";
+
+
+        let statusLabel =
+            shipment.status;
+
+
+        if (shipment.status === "pending") {
+            statusLabel = "Pending";
+        }
+
+        if (shipment.status === "in_transit") {
+            statusLabel = "In transit";
+        }
+
+        if (shipment.status === "delivered") {
+            statusLabel = "Delivered";
+        }
+
+
+        let actionButton = "";
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | PENDING
+        |--------------------------------------------------------------------------
+        */
+
+        if (shipment.status === "pending") {
+
+            actionButton = `
+                <button
+                    type="button"
+                    class="table-action"
+                    data-courier-action="pickup"
+                    data-shipment-id="${escapeHTML(
+                        shipment.id
+                    )}"
+                >
+                    Start pickup →
+                </button>
+            `;
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | IN TRANSIT
+        |--------------------------------------------------------------------------
+        */
+
+        else if (
+            shipment.status === "in_transit"
+        ) {
+
+            actionButton = `
+                <button
+                    type="button"
+                    class="table-action"
+                    data-courier-action="delivered"
+                    data-shipment-id="${escapeHTML(
+                        shipment.id
+                    )}"
+                >
+                    Mark delivered ✓
+                </button>
+            `;
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | HTML
+        |--------------------------------------------------------------------------
+        */
+
+        row.innerHTML = `
+
+            <div class="shipment-main">
+
+                <strong>
+                    ${escapeHTML(
+                        shipment.tracking_number
+                    )}
+                </strong>
+
+                <span>
+                    ${escapeHTML(
+                        shipment.sender_name
+                    )}
+                </span>
+
+            </div>
+
+
+            <div class="shipment-recipient">
+
+                <strong>
+                    ${escapeHTML(
+                        shipment.origin
+                    )}
+                    →
+                    ${escapeHTML(
+                        shipment.destination
+                    )}
+                </strong>
+
+                <span>
+                    ${escapeHTML(
+                        shipment.receiver_name
+                    )}
+                </span>
+
+            </div>
+
+
+            <span
+                class="status ${
+                    shipment.status === "delivered"
+                        ? "delivered"
+                        : ""
+                }"
+            >
+                ${escapeHTML(statusLabel)}
+            </span>
+
+
+            <div class="shipment-actions">
+
+                <button
+                    type="button"
+                    class="table-action"
+                    data-view-courier-shipment
+                    data-shipment-id="${escapeHTML(
+                        shipment.id
+                    )}"
+                >
+                    View
+                </button>
+
+                ${actionButton}
+
+            </div>
+
+        `;
+
+
+        container.appendChild(row);
+
     });
 
-    function escapeHTML(value) {
+};
 
-        return String(value ?? "")
-            .replaceAll("&", "&amp;")
-            .replaceAll("<", "&lt;")
-            .replaceAll(">", "&gt;")
-            .replaceAll('"', "&quot;")
-            .replaceAll("'", "&#039;");
 
+/* =====================================================
+   COURIER BUTTON ACTION
+===================================================== */
+
+document.addEventListener(
+    "click",
+    event => {
+
+        const button =
+            event.target.closest(
+                "[data-courier-action]"
+            );
+
+        if (!button) return;
+
+
+        const shipmentId =
+            button.dataset.shipmentId;
+
+        const action =
+            button.dataset.courierAction;
+
+
+        if (!shipmentId || !action) {
+            return;
+        }
+
+
+        let message;
+
+
+        if (action === "pickup") {
+
+            message =
+                "Ambil shipment ini dan mulai perjalanan?";
+
+        }
+
+        else if (action === "delivered") {
+
+            message =
+                "Tandai shipment ini sebagai delivered?";
+
+        }
+
+
+        if (
+            message &&
+            !confirm(message)
+        ) {
+            return;
+        }
+
+
+        button.disabled = true;
+
+        updateCourierShipment(
+            shipmentId,
+            action
+        );
     }
+);
 
-});
+
+/* =====================================================
+   AUTO LOAD
+===================================================== */
+
+renderCourierShipments();
+
+
+/* =====================================================
+   COURIER — RENDER
+===================================================== */
+
+window.renderCourierShipments = async function () {
+
+    const container =
+        document.getElementById(
+            "courierShipmentList"
+        );
+
+    if (!container) return;
+
+    const shipments =
+        await getCourierShipments();
+
+    container.innerHTML = "";
+
+    shipments.forEach(shipment => {
+
+        const row =
+            document.createElement("div");
+
+        row.className = "shipment-row";
+
+        row.innerHTML = `
+
+            <div class="shipment-main">
+
+                <strong>
+                    ${escapeHTML(
+                        shipment.tracking_number
+                    )}
+                </strong>
+
+                <span>
+                    ${escapeHTML(
+                        shipment.sender_name
+                    )}
+                </span>
+
+            </div>
+
+
+            <div class="shipment-recipient">
+
+                <strong>
+                    ${escapeHTML(
+                        shipment.origin
+                    )}
+                    →
+                    ${escapeHTML(
+                        shipment.destination
+                    )}
+                </strong>
+
+                <span>
+                    ${escapeHTML(
+                        shipment.receiver_name
+                    )}
+                </span>
+
+            </div>
+
+
+            <span class="status">
+
+                ${escapeHTML(
+                    shipment.status
+                )}
+
+            </span>
+
+
+            <div class="shipment-actions">
+
+                <button
+                    type="button"
+                    class="table-action"
+                    data-view-shipment="<?= htmlspecialchars($shipment['tracking_number'], ENT_QUOTES) ?>"
+                >
+                    View
+                </button>
+
+                <?php if ($shipment['status'] === 'pending'): ?>
+
+                    <button
+                        type="button"
+                        class="table-action"
+                        data-edit-shipment="<?= (int) $shipment['id'] ?>"
+                        data-recipient="<?= htmlspecialchars($shipment['receiver_name'], ENT_QUOTES) ?>"
+                        data-address="<?= htmlspecialchars($shipment['destination'], ENT_QUOTES) ?>"
+                    >
+                        Edit
+                    </button>
+
+                <?php endif; ?>
+
+            </div>
+
+        `;
+
+        container.appendChild(row);
+
+    });
+
+};
+
+renderCourierShipments();
 
 /* =========================================================
    PACKIFY — COURIER INTERACTION
@@ -1738,122 +1438,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const actionButton =
         document.getElementById("shipmentAction");
-
-
-    /* -----------------------------------------------------
-       DEMO SHIPMENT DATA
-
-       Nanti tinggal diganti response API backend.
-    ----------------------------------------------------- */
-
-    const shipments = {
-
-        "PKF-2841-18": {
-            id: "PKF-2841-18",
-            status: "Delivered",
-            statusText: "Package successfully delivered",
-            from: "Depok",
-            to: "Bandung",
-            schedule: "13:30",
-            arrival: "Delivered",
-            step: 3
-        },
-
-        "PKF-2846-22": {
-            id: "PKF-2846-22",
-            status: "In transit",
-            statusText: "Package is currently on route",
-            from: "Jakarta",
-            to: "Cimahi",
-            schedule: "11:00",
-            arrival: "Today",
-            step: 2
-        },
-
-        "PKF-2847-01": {
-            id: "PKF-2847-01",
-            status: "Pickup",
-            statusText: "Pickup scheduled",
-            from: "Jakarta",
-            to: "Bandung",
-            schedule: "09:30",
-            arrival: "Today",
-            step: 1
-        },
-
-        "PKF-2850-03": {
-            id: "PKF-2850-03",
-            status: "Pickup",
-            statusText: "Pickup scheduled",
-            from: "Jakarta",
-            to: "Bekasi",
-            schedule: "15:00",
-            arrival: "Today",
-            step: 1
-        }
-
-    };
-
-
-    /* -----------------------------------------------------
-       OPEN MODAL
-    ----------------------------------------------------- */
-
-    function openShipment(id) {
-
-        const shipment = shipments[id];
-
-        if (!shipment) return;
-
-        modalId.textContent =
-            shipment.id;
-
-        modalStatus.textContent =
-            shipment.statusText;
-
-        modalStatusBadge.textContent =
-            shipment.status;
-
-        modalFrom.textContent =
-            shipment.from;
-
-        modalTo.textContent =
-            shipment.to;
-
-        modalSchedule.textContent =
-            shipment.schedule;
-
-        modalArrival.textContent =
-            shipment.arrival;
-
-
-        updateTimeline(
-            shipment.step
-        );
-
-        updateAction(
-            shipment.status
-        );
-
-
-        modal.classList.add("is-open");
-
-        modal.setAttribute(
-            "aria-hidden",
-            "false"
-        );
-
-        document.body.classList.add(
-            "modal-open"
-        );
-
-        setTimeout(() => {
-            closeButton?.focus();
-        }, 100);
-
-    }
-
-
     /* -----------------------------------------------------
        CLOSE MODAL
     ----------------------------------------------------- */

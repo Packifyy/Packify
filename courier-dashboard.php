@@ -1,21 +1,136 @@
 <?php
-session_start();
+
+require_once __DIR__ . '/functions.php';
+
+start_session_safe();
 
 /* =====================================================
    COURIER ACCESS PROTECTION
 ===================================================== */
 
+$user = current_user();
+
 if (
-    !isset($_SESSION['logged_in']) ||
-    $_SESSION['logged_in'] !== true ||
-    !isset($_SESSION['role']) ||
-    $_SESSION['role'] !== 'kurir'
+    $user === null ||
+    ($user['role'] ?? '') !== 'kurir'
 ) {
     header('Location: login.php?role=courier');
     exit;
 }
 
-$name = $_SESSION['identity'] ?? 'Courier';
+$name = $user['nama'] ?? 'Courier';
+
+
+/* =====================================================
+   LOAD SHIPMENTS FROM DATABASE
+===================================================== */
+
+$courierShipments = [];
+
+$result = mysqli_query(
+    $db,
+    "SELECT
+        id,
+        tracking_number,
+        sender_name,
+        receiver_name,
+        origin,
+        destination,
+        status,
+        created_at
+     FROM shipments
+     ORDER BY id DESC"
+);
+
+if ($result) {
+
+    while ($row = mysqli_fetch_assoc($result)) {
+
+        $courierShipments[] = $row;
+
+    }
+
+}
+
+
+/* =====================================================
+   COURIER ACTION
+===================================================== */
+
+if (
+    $_SERVER['REQUEST_METHOD'] === 'POST' &&
+    ($_POST['action'] ?? '') === 'update_shipment_status'
+) {
+
+    $shipmentId = (int) ($_POST['shipment_id'] ?? 0);
+    $newStatus = trim($_POST['status'] ?? '');
+
+    $allowedStatuses = [
+        'pending',
+        'sedang_dikirim',
+        'sudah_sampai'
+    ];
+
+    if (
+        $shipmentId < 1 ||
+        !in_array($newStatus, $allowedStatuses, true)
+    ) {
+        die('Data shipment tidak valid.');
+    }
+
+
+    $stmt = mysqli_prepare(
+        $db,
+        "UPDATE shipments
+         SET status = ?
+         WHERE id = ?"
+    );
+
+
+    if (!$stmt) {
+        die(
+            'Prepare statement gagal: ' .
+            mysqli_error($db)
+        );
+    }
+
+
+    mysqli_stmt_bind_param(
+        $stmt,
+        'si',
+        $newStatus,
+        $shipmentId
+    );
+
+
+    mysqli_stmt_execute($stmt);
+
+    mysqli_stmt_close($stmt);
+
+
+    header(
+        'Location: courier-dashboard.php?shipment=updated'
+    );
+
+    exit;
+}
+
+
+$firstName = explode(
+    ' ',
+    trim($name)
+)[0];
+
+
+$initial = strtoupper(
+    substr(
+        trim($name),
+        0,
+        1
+    )
+);
+
+?>
 
 $firstName = explode(' ', trim($name))[0];
 
@@ -275,72 +390,106 @@ $initial = strtoupper(
 
             <!-- NEXT STOP -->
 
-            <div
-                class="next-stop-card"
-                data-reveal
-            >
+<?php
 
-                <div class="next-stop-label">
+$nextShipment = null;
 
-                    <span class="small-label">
-                        NEXT STOP
-                    </span>
+foreach ($courierShipments as $shipment) {
 
-                    <span class="next-stop-time">
-                        15:00
-                    </span>
+    if (($shipment['status'] ?? '') === 'pending') {
+        $nextShipment = $shipment;
+        break;
+    }
 
-                </div>
+}
 
+?>
 
-                <div class="stop-icon">
-                    →
-                </div>
+<div
+    class="next-stop-card"
+    data-reveal
+>
 
+    <div class="next-stop-label">
 
-                <h3>
-                    PKF-2850-03
-                </h3>
+        <span class="small-label">
+            NEXT STOP
+        </span>
 
+        <span class="next-stop-time">
+            —
+        </span>
 
-                <p>
-                    Jl. Sudirman No. 18,
-                    Jakarta
-                </p>
-
-
-                <div class="stop-route">
-
-                    <span>
-                        Jakarta
-                    </span>
-
-                    <div class="mini-route">
-                        <i></i>
-                        <i></i>
-                        <i></i>
-                    </div>
-
-                    <span>
-                        Bekasi
-                    </span>
-
-                </div>
+    </div>
 
 
-                <button
-                    type="button"
-                    class="route-button"
-                >
-                    View delivery
-                    <span>→</span>
-                </button>
+    <div class="stop-icon">
+        →
+    </div>
 
+
+    <?php if ($nextShipment): ?>
+
+        <h3>
+            <?= htmlspecialchars(
+                $nextShipment['tracking_number']
+            ) ?>
+        </h3>
+
+
+        <p>
+            <?= htmlspecialchars(
+                $nextShipment['destination']
+            ) ?>
+        </p>
+
+
+        <div class="stop-route">
+
+            <span>
+                <?= htmlspecialchars(
+                    $nextShipment['origin']
+                ) ?>
+            </span>
+
+            <div class="mini-route">
+                <i></i>
+                <i></i>
+                <i></i>
             </div>
 
+            <span>
+                <?= htmlspecialchars(
+                    $nextShipment['destination']
+                ) ?>
+            </span>
+
+        </div>
+
+
+        <button
+            type="button"
+            class="route-button"
+        >
+            View delivery
+            <span>→</span>
+        </button>
+
+    <?php else: ?>
+
+        <h3>
+            No pending shipment
+        </h3>
+
+        <p>
+            There are no shipments waiting for pickup.
+        </p>
+
+    <?php endif; ?>
+
+</div>
+
         </section>
-
-
 
         <!-- =================================================
              QUICK STATS
@@ -432,6 +581,40 @@ $initial = strtoupper(
              TODAY'S ROUTE
         ================================================== -->
 
+<section
+    class="panel"
+    id="courierShipments"
+    data-reveal
+>
+
+    <div class="panel-heading">
+
+        <div>
+
+            <span class="small-label">
+                SHIPMENTS
+            </span>
+
+            <h2>
+                Available shipments
+            </h2>
+
+        </div>
+
+        <span class="status">
+            Database
+        </span>
+
+    </div>
+
+
+    <div
+        class="shipment-list"
+        id="courierShipmentList"
+    ></div>
+
+</section>
+
         <section
             class="panel courier-route-panel"
             id="tasks"
@@ -459,193 +642,140 @@ $initial = strtoupper(
             </div>
 
 
-            <div class="courier-route-list">
+            <div class="courier-route-list" id="courierShipmentList">
 
+<?php if (empty($courierShipments)): ?>
 
-                <!-- ROUTE 1 -->
+    <div class="empty-state">
 
-                <div class="courier-route-item completed">
+        <span>○</span>
 
-                    <div class="route-index">
-                        <span>01</span>
-                    </div>
+        <strong>
+            No shipments yet
+        </strong>
 
+        <p>
+            Customer shipments will appear here.
+        </p>
 
-                    <div class="route-main">
+    </div>
 
-                        <div class="route-title">
+<?php else: ?>
 
-                            <strong>
-                                PKF-2841-18
-                            </strong>
+    <?php foreach ($courierShipments as $index => $shipment): ?>
 
-                            <span class="status delivered">
-                                Completed
-                            </span>
+        <?php
 
-                        </div>
+        $status = $shipment['status'] ?? 'pending';
 
-                        <span class="route-location">
-                            Depok → Bandung
-                        </span>
+        if ($status === 'pending') {
 
-                    </div>
+            $statusLabel = 'Pickup';
+            $statusClass = '';
 
+        } elseif ($status === 'sedang_dikirim') {
 
-                    <div class="route-time">
+            $statusLabel = 'In transit';
+            $statusClass = '';
 
-                        <strong>
-                            13:30
-                        </strong>
+        } elseif ($status === 'sudah_sampai') {
 
-                        <span>
-                            Delivered
-                        </span>
+            $statusLabel = 'Delivered';
+            $statusClass = 'delivered';
 
-                    </div>
+        } else {
 
-                </div>
+            $statusLabel = ucfirst(
+                str_replace('_', ' ', $status)
+            );
 
+            $statusClass = '';
 
+        }
 
-                <!-- ROUTE 2 -->
+        ?>
 
-                <div class="courier-route-item current">
+        <div
+            class="courier-route-item
+            <?= $status === 'sudah_sampai' ? 'completed' : '' ?>
+            <?= $status === 'sedang_dikirim' ? 'current' : '' ?>"
+        >
 
-                    <div class="route-index">
-                        <span>02</span>
-                    </div>
+            <div class="route-index">
 
-
-                    <div class="route-main">
-
-                        <div class="route-title">
-
-                            <strong>
-                                PKF-2846-22
-                            </strong>
-
-                            <span class="status">
-                                In transit
-                            </span>
-
-                        </div>
-
-                        <span class="route-location">
-                            Jakarta → Cimahi
-                        </span>
-
-                    </div>
-
-
-                    <div class="route-time">
-
-                        <strong>
-                            11:00
-                        </strong>
-
-                        <span>
-                            On route
-                        </span>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- ROUTE 3 -->
-
-                <div class="courier-route-item">
-
-                    <div class="route-index">
-                        <span>03</span>
-                    </div>
-
-
-                    <div class="route-main">
-
-                        <div class="route-title">
-
-                            <strong>
-                                PKF-2847-01
-                            </strong>
-
-                            <span class="status">
-                                Pickup
-                            </span>
-
-                        </div>
-
-                        <span class="route-location">
-                            Jakarta → Bandung
-                        </span>
-
-                    </div>
-
-
-                    <div class="route-time">
-
-                        <strong>
-                            09:30
-                        </strong>
-
-                        <span>
-                            Scheduled
-                        </span>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- ROUTE 4 -->
-
-                <div class="courier-route-item">
-
-                    <div class="route-index">
-                        <span>04</span>
-                    </div>
-
-
-                    <div class="route-main">
-
-                        <div class="route-title">
-
-                            <strong>
-                                PKF-2850-03
-                            </strong>
-
-                            <span class="status">
-                                Pickup
-                            </span>
-
-                        </div>
-
-                        <span class="route-location">
-                            Jakarta → Bekasi
-                        </span>
-
-                    </div>
-
-
-                    <div class="route-time">
-
-                        <strong>
-                            15:00
-                        </strong>
-
-                        <span>
-                            Upcoming
-                        </span>
-
-                    </div>
-
-                </div>
-
+                <span>
+                    <?= str_pad(
+                        $index + 1,
+                        2,
+                        '0',
+                        STR_PAD_LEFT
+                    ) ?>
+                </span>
 
             </div>
+
+
+            <div class="route-main">
+
+                <div class="route-title">
+
+                    <strong>
+                        <?= htmlspecialchars(
+                            $shipment['tracking_number']
+                        ) ?>
+                    </strong>
+
+                    <span
+                        class="status <?= $statusClass ?>"
+                    >
+                        <?= htmlspecialchars(
+                            $statusLabel
+                        ) ?>
+                    </span>
+
+                </div>
+
+
+                <span class="route-location">
+
+                    <?= htmlspecialchars(
+                        $shipment['origin']
+                    ) ?>
+
+                    →
+
+                    <?= htmlspecialchars(
+                        $shipment['destination']
+                    ) ?>
+
+                </span>
+
+            </div>
+
+
+            <div class="route-time">
+
+                <strong>
+                    <?= htmlspecialchars(
+                        $shipment['receiver_name']
+                    ) ?>
+                </strong>
+
+                <span>
+                    <?= htmlspecialchars(
+                        $shipment['sender_name']
+                    ) ?>
+                </span>
+
+            </div>
+
+        </div>
+
+    <?php endforeach; ?>
+
+<?php endif; ?>
+
+</div>
 
         </section>
 <!-- =================================================
