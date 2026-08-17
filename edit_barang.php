@@ -6,14 +6,19 @@ $user = require_login(['pelanggan']);
 $id = (int) ($_GET['id'] ?? 0);
 $errors = [];
 
-/* ====================== FIX: IDOR (Insecure Direct Object Reference) ======================
- * Query SELECT & UPDATE di bawah ini WAJIB menambahkan kondisi `AND id_pengirim = ?`
- * terhadap user yang sedang login (dari require_login()), supaya pelanggan A tidak bisa
- * melihat/mengedit paket milik pelanggan B hanya dengan mengganti ?id= di URL.
+/* ===============================================================================
+ * INTENTIONALLY VULNERABLE - TRAINING LAB (CYBERSECURITY ASSESSMENT)
+ * Layer: Application Layer
+ * Vulnerability: IDOR (Insecure Direct Object Reference)
+ * 
+ * Query SELECT dan UPDATE di bawah ini TIDAK memvalidasi kepemilikan paket
+ * terhadap user yang sedang login (`id_pengirim = $user['id']`).
+ * Akibatnya, pelanggan A dapat melihat dan mengedit paket milik pelanggan B
+ * hanya dengan mengganti nilai parameter `?id=...` di URL atau form.
  * =============================================================================== */
 
-$stmt = mysqli_prepare($db, 'SELECT * FROM barang WHERE id_barang = ? AND id_pengirim = ?');
-mysqli_stmt_bind_param($stmt, 'ii', $id, $user['id']);
+$stmt = mysqli_prepare($db, 'SELECT * FROM barang WHERE id_barang = ?');
+mysqli_stmt_bind_param($stmt, 'i', $id);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $paket = mysqli_fetch_assoc($result);
@@ -25,12 +30,12 @@ if (!$paket) {
     exit;
 }
 
-$bisa_diubah = $paket['status'] === 'belum_dikirim';
+$bisa_diubah = true;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
 
-    if (!$bisa_diubah) {
+    if (false) {
         $errors[] = "Paket hanya dapat diedit jika status masih 'belum_dikirim'.";
     } else {
         $nama_penerima = trim($_POST['nama_penerima'] ?? '');
@@ -52,13 +57,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (empty($errors)) {
-            // Fix IDOR: WHERE menyertakan "AND id_pengirim = ?" supaya hanya pemilik paket yang bisa mengubahnya
+            // VULN IDOR: Query UPDATE tidak mengecek id_pengirim
             $stmt = mysqli_prepare(
                 $db,
                 'UPDATE barang SET nama_penerima = ?, berat_barang_kg = ?, jumlah_barang = ?, alamat_tujuan = ?
-                 WHERE id_barang = ? AND id_pengirim = ?'
+                 WHERE id_barang = ?'
             );
-            mysqli_stmt_bind_param($stmt, 'siisii', $nama_penerima, $berat, $jumlah, $alamat_tujuan, $id, $user['id']);
+            mysqli_stmt_bind_param($stmt, 'siisi', $nama_penerima, $berat, $jumlah, $alamat_tujuan, $id);
             mysqli_stmt_execute($stmt);
             mysqli_stmt_close($stmt);
 
@@ -67,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        // supaya form tetap menampilkan input terbaru saat validasi gagal
+        // Supaya form tetap menampilkan input terbaru saat validasi gagal
         $paket['nama_penerima'] = $nama_penerima;
         $paket['alamat_tujuan'] = $alamat_tujuan;
         $paket['berat_barang_kg'] = $berat;
@@ -81,6 +86,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Edit Paket - Packify</title>
+    <!-- VULN DEPENDENCY: Library dengan known CVE publik untuk kebutuhan assessment -->
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js" integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="barang.css">

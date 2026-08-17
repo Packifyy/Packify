@@ -14,12 +14,38 @@ $name = $user['nama'] ?? 'Customer';
 $firstName = explode(' ', trim($name))[0];
 $initial = strtoupper(substr(trim($name), 0, 1));
 
-// Semua POST di dashboard ini wajib membawa CSRF token yang valid (fix: forms sebelumnya tidak dilindungi CSRF)
+// AJAX Track API for real-time tracking of any package across entire database
+if (isset($_GET['action']) && $_GET['action'] === 'track_api') {
+    header('Content-Type: application/json');
+    $trackQuery = trim($_GET['q'] ?? '');
+    $digits = preg_replace('/[^0-9]/', '', $trackQuery);
+    $shipId = $digits ? (int)$digits : 0;
+    
+    if ($shipId > 0) {
+        $stmt = mysqli_prepare($db, 'SELECT b.*, u.nama as nama_pengirim FROM barang b JOIN users u ON u.id = b.id_pengirim WHERE b.id_barang = ?');
+        if ($stmt) {
+            mysqli_stmt_bind_param($stmt, 'i', $shipId);
+            mysqli_stmt_execute($stmt);
+            $res = mysqli_stmt_get_result($stmt);
+            $item = mysqli_fetch_assoc($res);
+            mysqli_stmt_close($stmt);
+            
+            if ($item) {
+                echo json_encode(['status' => 'success', 'data' => $item]);
+                exit;
+            }
+        }
+    }
+    echo json_encode(['status' => 'error', 'message' => 'Shipment not found']);
+    exit;
+}
+
+// POST actions CSRF verification
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
 }
 
-// Handle change password (fix: sebelumnya modal ini hanya tampilan, tidak benar-benar mengubah password)
+// Handle change password
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'change_password') {
     $oldPassword = $_POST['old_password'] ?? '';
     $newPassword = $_POST['new_password'] ?? '';
@@ -43,20 +69,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'chang
         exit;
     }
 
-    $stmt = mysqli_prepare($db, 'SELECT password_hash FROM users WHERE id = ?');
-    mysqli_stmt_bind_param($stmt, 'i', $user['id']);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
-    $row = mysqli_fetch_assoc($result);
-    mysqli_stmt_close($stmt);
-
-    // Validasi password lama benar-benar dicek (bukan sekadar dicek "kosong atau tidak")
-    if (!$row || !password_verify($oldPassword, $row['password_hash'])) {
-        set_flash('danger', 'Password lama tidak sesuai.');
-        header('Location: customer-dashboard.php');
-        exit;
-    }
-
+    /* ===============================================================================
+     * INTENTIONALLY VULNERABLE - TRAINING LAB (CYBERSECURITY ASSESSMENT)
+     * Vulnerability: Broken Authentication
+     * password_lama diterima dari form modal Settings tetapi TIDAK diverifikasi
+     * terhadap password_hash di database via password_verify().
+     * Pengguna dapat memasukkan sembarang teks pada kolom password lama.
+     * =============================================================================== */
     $newHash = password_hash($newPassword, PASSWORD_BCRYPT);
     $update = mysqli_prepare($db, 'UPDATE users SET password_hash = ? WHERE id = ?');
     mysqli_stmt_bind_param($update, 'si', $newHash, $user['id']);
@@ -75,7 +94,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     $newAddress = trim($_POST['address'] ?? '');
 
     if ($newName === '' || $newPhone === '' || $newAddress === '') {
-        die('Data profile tidak lengkap.');
+        set_flash('danger', 'Data profile tidak lengkap.');
+        header('Location: customer-dashboard.php');
+        exit;
     }
 
     $stmt = mysqli_prepare($db, 'UPDATE users SET nama = ?, telpon = ?, alamat = ? WHERE id = ?');
@@ -83,7 +104,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
 
-    header('Location: customer-dashboard.php?profile=updated');
+    set_flash('success', 'Profil berhasil diperbarui.');
+    header('Location: customer-dashboard.php');
     exit;
 }
 
@@ -96,13 +118,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     $status = 'belum_dikirim';
 
     if ($namaPenerima === '' || $alamatTujuan === '' || $beratBarang < 1 || $jumlahBarang < 1) {
-        die('Data barang tidak lengkap.');
+        set_flash('danger', 'Data barang tidak lengkap.');
+        header('Location: customer-dashboard.php');
+        exit;
     }
 
     $stmt = mysqli_prepare($db, 'INSERT INTO barang (id_pengirim, nama_penerima, berat_barang_kg, jumlah_barang, alamat_tujuan, status) VALUES (?, ?, ?, ?, ?, ?)');
     
     if (!$stmt) {
-        die('Prepare statement gagal: ' . mysqli_error($db));
+        set_flash('danger', 'Prepare statement gagal: ' . mysqli_error($db));
+        header('Location: customer-dashboard.php');
+        exit;
     }
 
     mysqli_stmt_bind_param($stmt, 'isiiss', $user['id'], $namaPenerima, $beratBarang, $jumlahBarang, $alamatTujuan, $status);
@@ -110,11 +136,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     if (!mysqli_stmt_execute($stmt)) {
         $error = mysqli_stmt_error($stmt);
         mysqli_stmt_close($stmt);
-        die('Gagal membuat shipment: ' . htmlspecialchars($error));
+        set_flash('danger', 'Gagal membuat shipment: ' . htmlspecialchars($error));
+        header('Location: customer-dashboard.php');
+        exit;
     }
 
+    $createdId = mysqli_insert_id($db);
     mysqli_stmt_close($stmt);
-    header('Location: customer-dashboard.php?shipment=created');
+    set_flash('success', 'Paket PKF-' . str_pad((string)$createdId, 4, '0', STR_PAD_LEFT) . ' berhasil dibuat!');
+    header('Location: customer-dashboard.php');
     exit;
 }
 
@@ -127,30 +157,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     $jumlahBarang = (int) ($_POST['jumlah_barang'] ?? 1);
 
     if ($idBarang < 1 || $namaPenerima === '' || $alamatTujuan === '' || $beratBarang < 1 || $jumlahBarang < 1) {
-        die('Data barang tidak lengkap.');
+        set_flash('danger', 'Data barang tidak lengkap.');
+        header('Location: customer-dashboard.php');
+        exit;
     }
 
-    /* ====================== FIX: IDOR (Insecure Direct Object Reference) ======================
-     * Query di bawah ini WAJIB menambahkan kondisi "AND id_pengirim = ?", supaya
-     * pelanggan A yang sedang login tidak bisa mengedit paket milik pelanggan lain
-     * dengan mengganti nilai id_barang di form/request.
+    /* ===============================================================================
+     * INTENTIONALLY VULNERABLE - TRAINING LAB (CYBERSECURITY ASSESSMENT)
+     * Vulnerability: IDOR (Insecure Direct Object Reference)
+     * Query UPDATE di bawah ini TIDAK memvalidasi id_pengirim terhadap user yang sedang login.
+     * Pelanggan B dapat mengedit paket milik siapapun hanya dengan mengirim id_barang target.
      * =============================================================================== */
-    $stmt = mysqli_prepare($db, 'UPDATE barang SET nama_penerima = ?, alamat_tujuan = ?, berat_barang_kg = ?, jumlah_barang = ? WHERE id_barang = ? AND id_pengirim = ? AND status = "belum_dikirim"');
+    $stmt = mysqli_prepare($db, 'UPDATE barang SET nama_penerima = ?, alamat_tujuan = ?, berat_barang_kg = ?, jumlah_barang = ? WHERE id_barang = ?');
     
     if (!$stmt) {
-        die('Prepare statement gagal: ' . mysqli_error($db));
+        set_flash('danger', 'Prepare statement gagal: ' . mysqli_error($db));
+        header('Location: customer-dashboard.php');
+        exit;
     }
 
-    mysqli_stmt_bind_param($stmt, 'ssiiii', $namaPenerima, $alamatTujuan, $beratBarang, $jumlahBarang, $idBarang, $user['id']);
-
-    if (!mysqli_stmt_execute($stmt)) {
-        $error = mysqli_stmt_error($stmt);
-        mysqli_stmt_close($stmt);
-        die('Gagal mengedit shipment: ' . htmlspecialchars($error));
-    }
-
+    mysqli_stmt_bind_param($stmt, 'ssiii', $namaPenerima, $alamatTujuan, $beratBarang, $jumlahBarang, $idBarang);
+    mysqli_stmt_execute($stmt);
+    $affected = mysqli_stmt_affected_rows($stmt);
     mysqli_stmt_close($stmt);
-    header('Location: customer-dashboard.php?shipment=updated');
+
+    if ($affected >= 0) {
+        set_flash('success', 'Paket PKF-' . str_pad((string)$idBarang, 4, '0', STR_PAD_LEFT) . ' berhasil diperbarui!');
+    } else {
+        set_flash('danger', 'Gagal memperbarui paket.');
+    }
+
+    header('Location: customer-dashboard.php?view_id=' . $idBarang);
     exit;
 }
 
@@ -159,24 +196,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cance
     $idBarang = (int) ($_POST['id_barang'] ?? 0);
 
     if ($idBarang < 1) {
-        die('ID barang tidak valid.');
+        set_flash('danger', 'ID barang tidak valid.');
+        header('Location: customer-dashboard.php');
+        exit;
     }
 
-    /* ====================== FIX: IDOR (Insecure Direct Object Reference) ======================
-     * Query DELETE ini WAJIB memvalidasi id_pengirim terhadap user yang sedang login.
+    /* ===============================================================================
+     * INTENTIONALLY VULNERABLE - TRAINING LAB (CYBERSECURITY ASSESSMENT)
+     * Vulnerability: IDOR (Insecure Direct Object Reference)
+     * Query DELETE di bawah ini TIDAK memvalidasi id_pengirim terhadap user yang sedang login.
      * =============================================================================== */
-    $stmt = mysqli_prepare($db, 'DELETE FROM barang WHERE id_barang = ? AND id_pengirim = ? AND status = "belum_dikirim"');
-    mysqli_stmt_bind_param($stmt, 'ii', $idBarang, $user['id']);
+    $stmt = mysqli_prepare($db, 'DELETE FROM barang WHERE id_barang = ?');
+    mysqli_stmt_bind_param($stmt, 'i', $idBarang);
     mysqli_stmt_execute($stmt);
-
     $berhasil = mysqli_stmt_affected_rows($stmt) > 0;
     mysqli_stmt_close($stmt);
 
-    header('Location: customer-dashboard.php?shipment=' . ($berhasil ? 'cancelled' : 'cancel_failed'));
+    if ($berhasil) {
+        set_flash('success', 'Paket PKF-' . str_pad((string)$idBarang, 4, '0', STR_PAD_LEFT) . ' berhasil dibatalkan.');
+    } else {
+        set_flash('danger', 'Paket tidak ditemukan atau sudah tidak dapat dibatalkan.');
+    }
+
+    header('Location: customer-dashboard.php');
     exit;
 }
 
-// Fetch customer shipments
+// Fetch customer shipments (milik user yang sedang login)
 $customerShipments = [];
 $stmt = mysqli_prepare($db, 'SELECT id_barang, nama_penerima, berat_barang_kg, jumlah_barang, alamat_tujuan, status, created_at FROM barang WHERE id_pengirim = ? ORDER BY id_barang DESC');
 
@@ -190,6 +236,48 @@ if ($stmt) {
     mysqli_stmt_close($stmt);
 }
 
+// Check for URL query parameter for IDOR editing (e.g. ?shipment=1 or ?id=1 or ?edit_id=1)
+$targetEditShipment = null;
+$paramVal = $_GET['shipment'] ?? $_GET['edit_id'] ?? $_GET['id'] ?? $_GET['edit'] ?? 0;
+$editId = is_numeric($paramVal) ? (int)$paramVal : (int)preg_replace('/[^0-9]/', '', (string)$paramVal);
+
+if ($editId > 0 && !isset($_GET['view_id']) && !isset($_GET['view'])) {
+    /* ===============================================================================
+     * INTENTIONALLY VULNERABLE - TRAINING LAB (CYBERSECURITY ASSESSMENT)
+     * Vulnerability: IDOR (Insecure Direct Object Reference)
+     * Query di bawah ini TIDAK memvalidasi kepemilikan id_pengirim terhadap user yang sedang login.
+     * Pelanggan B dapat me-load data paket milik Pelanggan A hanya dengan memasukkan ?shipment=1 di URL.
+     * =============================================================================== */
+    $stmtEdit = mysqli_prepare($db, 'SELECT * FROM barang WHERE id_barang = ?');
+    if ($stmtEdit) {
+        mysqli_stmt_bind_param($stmtEdit, 'i', $editId);
+        mysqli_stmt_execute($stmtEdit);
+        $resEdit = mysqli_stmt_get_result($stmtEdit);
+        $targetEditShipment = mysqli_fetch_assoc($resEdit);
+        mysqli_stmt_close($stmtEdit);
+    }
+}
+
+// Check for URL query parameter for IDOR viewing (e.g. ?view_id=1)
+$targetViewShipment = null;
+$viewParam = $_GET['view_id'] ?? $_GET['view'] ?? 0;
+$viewId = is_numeric($viewParam) ? (int)$viewParam : (int)preg_replace('/[^0-9]/', '', (string)$viewParam);
+
+if ($viewId > 0) {
+    /* ===============================================================================
+     * INTENTIONALLY VULNERABLE - TRAINING LAB (CYBERSECURITY ASSESSMENT)
+     * Vulnerability: IDOR (Insecure Direct Object Reference)
+     * =============================================================================== */
+    $stmtView = mysqli_prepare($db, 'SELECT b.*, u.nama as nama_pengirim, u.alamat as alamat_asal FROM barang b JOIN users u ON u.id = b.id_pengirim WHERE b.id_barang = ?');
+    if ($stmtView) {
+        mysqli_stmt_bind_param($stmtView, 'i', $viewId);
+        mysqli_stmt_execute($stmtView);
+        $resView = mysqli_stmt_get_result($stmtView);
+        $targetViewShipment = mysqli_fetch_assoc($resView);
+        mysqli_stmt_close($stmtView);
+    }
+}
+
 // Calculate stats
 $totalShipments = count($customerShipments);
 $pendingShipments = array_filter($customerShipments, function($s) { return $s['status'] === 'belum_dikirim'; });
@@ -201,7 +289,6 @@ $recentShipment = !empty($customerShipments) ? $customerShipments[0] : null;
 
 $flash = get_flash();
 ?>
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -211,6 +298,8 @@ $flash = get_flash();
     <title>Dashboard — Packify</title>
     <meta name="csrf-token" content="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="assets/css/dashboard.css">
+    <!-- VULNERABLE DEPENDENCY (CVE-2020-11022 / CVE-2020-11023) -->
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
 </head>
 
 <body>
@@ -227,7 +316,7 @@ $flash = get_flash();
             <a href="#history"><span>04</span> History</a>
         </nav>
         <div class="sidebar-bottom">
-            <a href="#settings">Settings</a>
+            <a href="javascript:void(0)" onclick="openModal(document.getElementById('profileModal'))">Settings</a>
             <a href="logout.php">Log out</a>
         </div>
     </aside>
@@ -242,7 +331,7 @@ $flash = get_flash();
                 <h1 id="overview">Good morning, <?= htmlspecialchars($firstName) ?>.</h1>
                 <p>Here's what's happening with your shipments.</p>
             </div>
-            <div class="profile">
+            <div class="profile" onclick="openModal(document.getElementById('profileModal'))" title="Edit profile & password" style="cursor: pointer;">
                 <div class="avatar"><?= htmlspecialchars($initial) ?></div>
                 <div class="profile-info">
                     <strong><?= htmlspecialchars($name) ?></strong>
@@ -250,6 +339,14 @@ $flash = get_flash();
                 </div>
             </div>
         </header>
+
+        <!-- FLASH NOTIFICATION -->
+        <?php if ($flash): ?>
+            <div style="padding: 14px 20px; border-radius: 12px; margin-bottom: 24px; font-size: 0.95rem; display: flex; align-items: center; justify-content: space-between; background: <?= ($flash['type'] ?? '') === 'danger' ? '#fde8e8' : 'var(--green-soft)' ?>; color: <?= ($flash['type'] ?? '') === 'danger' ? '#9b1c1c' : 'var(--green-dark)' ?>; border: 1px solid <?= ($flash['type'] ?? '') === 'danger' ? '#f8b4b4' : 'rgba(109, 168, 60, 0.25)' ?>;">
+                <span><?= htmlspecialchars($flash['message'] ?? '') ?></span>
+                <button type="button" style="background:none;border:none;cursor:pointer;font-size:1.2rem;line-height:1;color:inherit;" onclick="this.parentElement.remove()">×</button>
+            </div>
+        <?php endif; ?>
 
         <!-- QUICK STATS -->
         <section class="stats-grid">
@@ -274,7 +371,7 @@ $flash = get_flash();
         <section class="content-grid">
 
             <!-- SHIPMENT LIST -->
-            <section class="panel" data-reveal>
+            <section class="panel" id="shipments" data-reveal>
                 <div class="panel-heading">
                     <div>
                         <span class="small-label">MY SHIPMENTS</span>
@@ -293,12 +390,12 @@ $flash = get_flash();
                             <p>Create your first shipment to get started.</p>
                         </div>
                     <?php else: ?>
-                        <?php $displayNumber = 1; ?>
                         <?php foreach ($customerShipments as $shipment): ?>
+                            <?php $formattedId = 'PKF-' . str_pad((string)$shipment['id_barang'], 4, '0', STR_PAD_LEFT); ?>
                             <div class="shipment-row">
                                 <div class="shipment-main">
-                                    <strong>#<?= $displayNumber ?></strong>
-                                    <span><?= htmlspecialchars($shipment['nama_penerima']) ?></span>
+                                    <strong><?= htmlspecialchars($formattedId) ?></strong>
+                                    <span><?= htmlspecialchars($shipment['nama_penerima']) ?> <small style="color: var(--muted, #767d74); font-size: 10px; font-weight: normal; margin-left: 4px;">(ID: <?= (int)$shipment['id_barang'] ?>)</small></span>
                                 </div>
                                 <div class="shipment-recipient">
                                     <strong><?= $shipment['berat_barang_kg'] ?> kg</strong>
@@ -309,6 +406,7 @@ $flash = get_flash();
                                 </span>
                                 <div class="shipment-actions">
                                     <button type="button" class="table-action" data-view-shipment="<?= (int) $shipment['id_barang'] ?>"
+                                            data-formatted-id="<?= htmlspecialchars($formattedId, ENT_QUOTES) ?>"
                                             data-nama-penerima="<?= htmlspecialchars($shipment['nama_penerima'], ENT_QUOTES) ?>"
                                             data-alamat-tujuan="<?= htmlspecialchars($shipment['alamat_tujuan'], ENT_QUOTES) ?>"
                                             data-berat-barang="<?= (int) $shipment['berat_barang_kg'] ?>"
@@ -327,31 +425,17 @@ $flash = get_flash();
                                     <?php endif; ?>
                                 </div>
                             </div>
-                            <?php $displayNumber++; ?>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </div>
             </section>
 
             <!-- RECENT SHIPMENT -->
-            <div class="panel large-panel" id="shipments" data-reveal>
+            <div class="panel large-panel" data-reveal>
                 <div class="panel-heading">
                     <div>
                         <span class="small-label">RECENT SHIPMENT</span>
-                        <h2><?php
-                        if ($recentShipment) {
-                            $recentDisplayNumber = 1;
-                            foreach ($customerShipments as $index => $s) {
-                                if ((int) $s['id_barang'] === (int) $recentShipment['id_barang']) {
-                                    $recentDisplayNumber = $index + 1;
-                                    break;
-                                }
-                            }
-                            echo '#' . $recentDisplayNumber;
-                        } else {
-                            echo 'No shipments';
-                        }
-                    ?></h2>
+                        <h2><?= $recentShipment ? 'PKF-' . str_pad((string)$recentShipment['id_barang'], 4, '0', STR_PAD_LEFT) : 'No shipments' ?></h2>
                     </div>
                     <span class="status <?= $recentShipment && $recentShipment['status'] === 'sudah_sampai' ? 'delivered' : '' ?>">
                         <?= $recentShipment ? htmlspecialchars(ucfirst(str_replace('_', ' ', $recentShipment['status']))) : 'N/A' ?>
@@ -419,10 +503,10 @@ $flash = get_flash();
             <div class="panel tracking-panel" id="tracking" data-reveal>
                 <span class="small-label">TRACK PACKAGE</span>
                 <h2>Where is your package?</h2>
-                <p>Enter your shipment ID to see the latest status.</p>
+                <p>Enter your shipment ID or PKF code to see the latest status.</p>
 
                 <form id="trackingForm" class="tracking-form">
-                    <input type="text" name="tracking_id" placeholder="Shipment ID (e.g. 1)" autocomplete="off" maxlength="30" required>
+                    <input type="text" name="tracking_id" placeholder="Shipment ID (e.g. PKF-0001 or 1)" autocomplete="off" maxlength="30" required>
                     <button type="submit">Track <span>→</span></button>
                 </form>
 
@@ -432,7 +516,7 @@ $flash = get_flash();
                     <span class="tip-icon">i</span>
                     <div>
                         <strong>Tracking tip</strong>
-                        <p>Enter your shipment ID number to check the current status.</p>
+                        <p>Search any shipment code (e.g. <code>PKF-0001</code>) or direct number (e.g. <code>1</code>) to track package status.</p>
                     </div>
                 </div>
             </div>
@@ -445,11 +529,11 @@ $flash = get_flash();
                     <span class="small-label">ACTIVITY</span>
                     <h2>Shipment history</h2>
                 </div>
-                <a href="#">View all →</a>
+                <a href="#shipments">View all →</a>
             </div>
 
             <?php 
-            $historyShipments = array_slice($customerShipments, 0, 3);
+            $historyShipments = array_slice($customerShipments, 0, 5);
             if (empty($historyShipments)): ?>
                 <div class="empty-state" style="padding: 30px 0;">
                     <span>○</span>
@@ -457,10 +541,11 @@ $flash = get_flash();
                 </div>
             <?php else: ?>
                 <?php foreach ($historyShipments as $historyIndex => $shipment): ?>
+                    <?php $histFormattedId = 'PKF-' . str_pad((string)$shipment['id_barang'], 4, '0', STR_PAD_LEFT); ?>
                     <div class="history-row">
                         <div class="history-info">
-                            <strong>#<?= $historyIndex + 1 ?></strong>
-                            <span><?= htmlspecialchars($shipment['nama_penerima']) ?> · <?= $shipment['berat_barang_kg'] ?> kg</span>
+                            <strong><?= htmlspecialchars($histFormattedId) ?></strong>
+                            <span><?= htmlspecialchars($shipment['nama_penerima']) ?> · <?= (int)$shipment['berat_barang_kg'] ?> kg</span>
                         </div>
                         <span class="status <?= $shipment['status'] === 'sudah_sampai' ? 'delivered' : '' ?>">
                             <?= htmlspecialchars(ucfirst(str_replace('_', ' ', $shipment['status']))) ?>
@@ -476,15 +561,17 @@ $flash = get_flash();
             <div>
                 <span class="small-label">NEED SOMETHING ELSE?</span>
                 <h2>Ready to send a package?</h2>
-                <p>Start a new shipment and let Packify handle the journey.</p>
+                <p>Create a new shipment order and our couriers will pick it up.</p>
             </div>
-            <a href="portal.php" class="btn-primary">Create shipment <span>→</span></a>
+            <a href="logout.php" class="btn-primary">
+                End session <span>→</span>
+            </a>
         </section>
 
     </main>
 </div>
 
-<!-- PROFILE MODAL -->
+<!-- PROFILE & PASSWORD MODAL -->
 <div class="packify-modal" id="profileModal" aria-hidden="true">
     <div class="packify-modal-backdrop"></div>
     <div class="packify-modal-card">
@@ -504,11 +591,11 @@ $flash = get_flash();
             </div>
             <div class="form-field">
                 <label>PHONE</label>
-                <input type="tel" name="phone" value="<?= htmlspecialchars($user['telpon'] ?? '') ?>" placeholder="08xxxxxxxxxx">
+                <input type="tel" name="phone" value="<?= htmlspecialchars($user['telpon'] ?? '') ?>" placeholder="08xxxxxxxxxx" required>
             </div>
             <div class="form-field">
                 <label>ADDRESS</label>
-                <textarea name="address" placeholder="Your address"><?= htmlspecialchars($user['alamat'] ?? '') ?></textarea>
+                <textarea name="address" placeholder="Your address" required><?= htmlspecialchars($user['alamat'] ?? '') ?></textarea>
             </div>
             <div class="form-actions">
                 <button type="button" class="form-button secondary" data-close-modal>Cancel</button>
@@ -516,34 +603,28 @@ $flash = get_flash();
             </div>
         </form>
 
-        <!-- CHANGE PASSWORD -->
-        <div class="profile-password-section" style="margin-top: 28px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,.08);">
-            <div class="packify-modal-header" style="margin-bottom: 18px;">
+        <div style="margin-top: 28px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,.08);">
+            <div class="packify-modal-header" style="margin-bottom: 16px;">
                 <div>
                     <span class="small-label">SECURITY</span>
                     <h2>Change password</h2>
                 </div>
             </div>
-
-            <form class="packify-form" id="changePasswordForm" method="POST" action="edit.php">
-                <?= csrf_field() ?>
+            <form class="packify-form" id="passwordForm" method="POST" action="customer-dashboard.php">
                 <input type="hidden" name="action" value="change_password">
-
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                 <div class="form-field">
                     <label>CURRENT PASSWORD</label>
-                    <input type="password" name="password_lama" autocomplete="current-password" required>
+                    <input type="password" name="old_password" required autocomplete="current-password">
                 </div>
-
                 <div class="form-field">
                     <label>NEW PASSWORD</label>
-                    <input type="password" name="password_baru" minlength="8" autocomplete="new-password" required>
+                    <input type="password" name="new_password" minlength="8" required autocomplete="new-password">
                 </div>
-
                 <div class="form-field">
                     <label>CONFIRM NEW PASSWORD</label>
-                    <input type="password" name="konfirmasi_password_baru" minlength="8" autocomplete="new-password" required>
+                    <input type="password" name="confirm_password" minlength="8" required autocomplete="new-password">
                 </div>
-
                 <div class="form-actions">
                     <button type="submit" class="form-button primary">Update password</button>
                 </div>
@@ -552,39 +633,7 @@ $flash = get_flash();
     </div>
 </div>
 
-<!-- PASSWORD MODAL -->
-<div class="packify-modal" id="passwordModal" aria-hidden="true">
-    <div class="packify-modal-backdrop"></div>
-    <div class="packify-modal-card">
-        <div class="packify-modal-header">
-            <div>
-                <span class="small-label">SECURITY</span>
-                <h2>Change password</h2>
-            </div>
-            <button type="button" class="modal-close" data-close-modal>×</button>
-        </div>
-        <form class="packify-form" id="passwordForm">
-            <div class="form-field">
-                <label>CURRENT PASSWORD</label>
-                <input type="password" name="old_password" required>
-            </div>
-            <div class="form-field">
-                <label>NEW PASSWORD</label>
-                <input type="password" name="new_password" minlength="6" required>
-            </div>
-            <div class="form-field">
-                <label>CONFIRM NEW PASSWORD</label>
-                <input type="password" name="confirm_password" minlength="6" required>
-            </div>
-            <div class="form-actions">
-                <button type="button" class="form-button secondary" data-close-modal>Cancel</button>
-                <button type="submit" class="form-button primary">Update password</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- SHIPMENT FORM MODAL -->
+<!-- SHIPMENT FORM MODAL (CREATE & EDIT) -->
 <div class="packify-modal" id="shipmentFormModal" aria-hidden="true">
     <div class="packify-modal-backdrop"></div>
     <div class="packify-modal-card">
@@ -629,7 +678,7 @@ $flash = get_flash();
         <div class="packify-modal-header">
             <div>
                 <span class="small-label">SHIPMENT DETAIL</span>
-                <h2 id="detailShipmentId">#1</h2>
+                <h2 id="detailShipmentId">PKF-0001</h2>
             </div>
             <button type="button" class="modal-close" data-close-modal>×</button>
         </div>
@@ -659,17 +708,18 @@ $flash = get_flash();
                 <strong id="detailCreated">-</strong>
             </div>
         </div>
+        <div class="form-actions" style="margin-top: 20px;">
+            <button type="button" class="form-button secondary" data-close-modal>Close</button>
+        </div>
     </div>
 </div>
 
-<script src="assets/js/app.js"></script>
-
 <script>
-// Enhanced JavaScript for handling the new structure
 document.addEventListener('DOMContentLoaded', function() {
-    const newShipmentButton = document.getElementById('newShipmentButton');
-    if (newShipmentButton) {
-        newShipmentButton.addEventListener('click', function() {
+    // New shipment button
+    const newBtn = document.getElementById('newShipmentButton');
+    if (newBtn) {
+        newBtn.addEventListener('click', function() {
             const modal = document.getElementById('shipmentFormModal');
             const form = modal.querySelector('form');
             const title = modal.querySelector('h2');
@@ -690,10 +740,9 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('[data-view-shipment]').forEach(btn => {
         btn.addEventListener('click', function() {
             const id = this.dataset.viewShipment;
+            const formattedId = this.dataset.formattedId || ('PKF-' + String(id).padStart(4, '0'));
 
-            const rows = Array.from(document.querySelectorAll('[data-view-shipment]'));
-            const displayNumber = rows.indexOf(this) + 1;
-            document.getElementById('detailShipmentId').textContent = '#' + displayNumber;
+            document.getElementById('detailShipmentId').textContent = formattedId;
             document.getElementById('detailStatus').textContent = this.dataset.status || 'Belum dikirim';
             document.getElementById('detailRecipient').textContent = this.dataset.namaPenerima || '-';
             document.getElementById('detailAddress').textContent = this.dataset.alamatTujuan || '-';
@@ -705,7 +754,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Edit shipment
+    // Edit shipment button click handler
     document.querySelectorAll('[data-edit-shipment]').forEach(btn => {
         btn.addEventListener('click', function() {
             const id = this.dataset.editShipment;
@@ -713,17 +762,17 @@ document.addEventListener('DOMContentLoaded', function() {
             const alamatTujuan = this.dataset.alamatTujuan || '';
             const beratBarang = this.dataset.beratBarang || '1';
             const jumlahBarang = this.dataset.jumlahBarang || '1';
+            const formattedId = 'PKF-' + String(id).padStart(4, '0');
             
             const modal = document.getElementById('shipmentFormModal');
             const form = modal.querySelector('form');
             const title = modal.querySelector('h2');
             const submitBtn = form.querySelector('button[type="submit"]');
             
-            title.textContent = 'Edit shipment';
+            title.textContent = 'Edit shipment ' + formattedId;
             submitBtn.textContent = 'Update shipment';
             form.querySelector('input[name="action"]').value = 'update_shipment';
             
-            // Add hidden id field if not exists
             let idField = form.querySelector('input[name="id_barang"]');
             if (!idField) {
                 idField = document.createElement('input');
@@ -738,11 +787,14 @@ document.addEventListener('DOMContentLoaded', function() {
             form.querySelector('input[name="berat_barang"]').value = beratBarang;
             form.querySelector('input[name="jumlah_barang"]').value = jumlahBarang;
             
+            // Sync URL parameter
+            history.pushState(null, '', 'customer-dashboard.php?shipment=' + id);
+            
             openModal(modal);
         });
     });
 
-    // Cancel shipment
+    // Cancel shipment button click handler
     document.querySelectorAll('[data-cancel-shipment]').forEach(btn => {
         btn.addEventListener('click', function() {
             const id = this.dataset.cancelShipment;
@@ -767,14 +819,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Reset modal on close
+    // Reset modal and URL on close
     document.querySelectorAll('[data-close-modal]').forEach(btn => {
         btn.addEventListener('click', function() {
             const modal = this.closest('.packify-modal');
             closeModal(modal);
-            
-            // Reset shipment form if it's the shipment modal
-            if (modal.id === 'shipmentFormModal') {
+            if (window.location.search.includes('shipment') || window.location.search.includes('id') || window.location.search.includes('view')) {
+                history.pushState(null, '', 'customer-dashboard.php');
+            }
+            if (modal && modal.id === 'shipmentFormModal') {
                 const form = modal.querySelector('form');
                 const title = modal.querySelector('h2');
                 const submitBtn = form.querySelector('button[type="submit"]');
@@ -788,47 +841,100 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Tracking form handler
+    // Auto-open edit modal if URL query parameter ?shipment=ID or ?edit_id=ID is present (IDOR testing)
+    <?php if (!empty($targetEditShipment)): ?>
+        (function() {
+            const editTarget = <?= json_encode($targetEditShipment) ?>;
+            const modal = document.getElementById('shipmentFormModal');
+            const form = modal.querySelector('form');
+            const title = modal.querySelector('h2');
+            const submitBtn = form.querySelector('button[type="submit"]');
+            const formattedId = 'PKF-' + String(editTarget.id_barang).padStart(4, '0');
+
+            title.textContent = 'Edit shipment ' + formattedId;
+            submitBtn.textContent = 'Update shipment';
+            form.querySelector('input[name="action"]').value = 'update_shipment';
+
+            let idField = form.querySelector('input[name="id_barang"]');
+            if (!idField) {
+                idField = document.createElement('input');
+                idField.type = 'hidden';
+                idField.name = 'id_barang';
+                form.appendChild(idField);
+            }
+            idField.value = editTarget.id_barang;
+
+            form.querySelector('input[name="nama_penerima"]').value = editTarget.nama_penerima || '';
+            form.querySelector('textarea[name="alamat_tujuan"]').value = editTarget.alamat_tujuan || '';
+            form.querySelector('input[name="berat_barang"]').value = editTarget.berat_barang_kg || 1;
+            form.querySelector('input[name="jumlah_barang"]').value = editTarget.jumlah_barang || 1;
+
+            openModal(modal);
+        })();
+    <?php endif; ?>
+
+    // Auto-open view modal if URL query parameter ?view_id=ID is present
+    <?php if (!empty($targetViewShipment)): ?>
+        (function() {
+            const viewTarget = <?= json_encode($targetViewShipment) ?>;
+            const formattedId = 'PKF-' + String(viewTarget.id_barang).padStart(4, '0');
+
+            document.getElementById('detailShipmentId').textContent = formattedId;
+            document.getElementById('detailStatus').textContent = viewTarget.status || 'Belum dikirim';
+            document.getElementById('detailRecipient').textContent = viewTarget.nama_penerima || '-';
+            document.getElementById('detailAddress').textContent = viewTarget.alamat_tujuan || '-';
+            document.getElementById('detailWeight').textContent = (viewTarget.berat_barang_kg || '1') + ' kg';
+            document.getElementById('detailQuantity').textContent = (viewTarget.jumlah_barang || '1') + ' item';
+            document.getElementById('detailCreated').textContent = viewTarget.created_at || '-';
+
+            openModal(document.getElementById('shipmentDetailModal'));
+        })();
+    <?php endif; ?>
+
+    // Tracking form handler (Real-time Database Lookup)
     document.getElementById('trackingForm').addEventListener('submit', function(e) {
         e.preventDefault();
-        const trackingId = this.querySelector('input[name="tracking_id"]').value.trim();
+        const rawInput = this.querySelector('input[name="tracking_id"]').value.trim();
         const resultDiv = document.getElementById('trackingResult');
         
-        if (!trackingId) {
-            resultDiv.innerHTML = '<p style="color: #e74c3c;">Please enter a shipment ID.</p>';
+        if (!rawInput) {
+            resultDiv.innerHTML = '<p style="color: #e74c3c;">Please enter a shipment ID or PKF code.</p>';
+            resultDiv.style.display = 'block';
             return;
         }
-        
-        // Find shipment in the list
-        const rows = document.querySelectorAll('.shipment-row');
-        let found = false;
-        
-        rows.forEach(row => {
-            const viewBtn = row.querySelector('[data-view-shipment]');
-            if (viewBtn && viewBtn.dataset.viewShipment === trackingId) {
-                found = true;
-                const recipient = row.querySelector('.shipment-main span')?.textContent || '-';
-                const address = row.querySelector('.shipment-recipient span')?.textContent || '-';
-                const status = row.querySelector('.status')?.textContent || 'Belum dikirim';
-                const weight = row.querySelector('.shipment-recipient strong')?.textContent || '-';
-                
-                resultDiv.innerHTML = `
-                    <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; margin-top: 15px;">
-                        <strong style="display: block; margin-bottom: 8px;">Shipment #${trackingId}</strong>
-                        <p><strong>Recipient:</strong> ${recipient}</p>
-                        <p><strong>Address:</strong> ${address}</p>
-                        <p><strong>Weight:</strong> ${weight}</p>
-                        <p><strong>Status:</strong> <span class="status ${status.toLowerCase().includes('sudah_sampai') ? 'delivered' : ''}">${status}</span></p>
-                    </div>
-                `;
-                resultDiv.style.display = 'block';
-            }
-        });
-        
-        if (!found) {
-            resultDiv.innerHTML = `<p style="color: #e74c3c;">Shipment #${trackingId} not found.</p>`;
-            resultDiv.style.display = 'block';
-        }
+
+        resultDiv.innerHTML = '<p style="color: var(--muted, #767d74);">Searching database...</p>';
+        resultDiv.style.display = 'block';
+
+        fetch('customer-dashboard.php?action=track_api&q=' + encodeURIComponent(rawInput))
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === 'success' && res.data) {
+                    const item = res.data;
+                    const formattedId = 'PKF-' + String(item.id_barang).padStart(4, '0');
+                    const status = item.status || 'belum_dikirim';
+                    const isDelivered = status.toLowerCase() === 'sudah_sampai';
+                    const isInTransit = status.toLowerCase() === 'sedang_dikirim';
+                    
+                    resultDiv.innerHTML = `
+                        <div style="padding: 16px; background: var(--surface-soft, #f8f9fa); border: 1px solid var(--line, #e5e9e2); border-radius: 10px; margin-top: 15px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <strong style="font-size: 14px; color: var(--text, #161c16);">${formattedId}</strong>
+                                <span class="status ${isDelivered ? 'delivered' : (isInTransit ? 'in-transit' : '')}">${status.replace('_', ' ')}</span>
+                            </div>
+                            <p style="margin: 4px 0; font-size: 12px;"><strong>Sender:</strong> ${item.nama_pengirim || '-'}</p>
+                            <p style="margin: 4px 0; font-size: 12px;"><strong>Recipient:</strong> ${item.nama_penerima || '-'}</p>
+                            <p style="margin: 4px 0; font-size: 12px;"><strong>Address:</strong> ${item.alamat_tujuan || '-'}</p>
+                            <p style="margin: 4px 0; font-size: 12px;"><strong>Package:</strong> ${(item.berat_barang_kg || '1')} kg · ${(item.jumlah_barang || '1')} item</p>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<p style="color: #e74c3c; margin-top: 12px;">Shipment <strong>${rawInput}</strong> not found in database.</p>`;
+                }
+            })
+            .catch(() => {
+                resultDiv.innerHTML = '<p style="color: #e74c3c; margin-top: 12px;">Failed to fetch shipment details.</p>';
+            });
     });
 });
 
@@ -837,6 +943,7 @@ function openModal(modal) {
     if (!modal) return;
     modal.style.display = 'flex';
     modal.setAttribute('aria-hidden', 'false');
+    modal.classList.add('open');
     document.body.style.overflow = 'hidden';
 }
 
@@ -844,7 +951,11 @@ function closeModal(modal) {
     if (!modal) return;
     modal.style.display = 'none';
     modal.setAttribute('aria-hidden', 'true');
+    modal.classList.remove('open');
     document.body.style.overflow = '';
+    if (window.location.search.includes('shipment') || window.location.search.includes('id') || window.location.search.includes('view')) {
+        history.pushState(null, '', 'customer-dashboard.php');
+    }
 }
 
 // Close modal on backdrop click

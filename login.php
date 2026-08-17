@@ -67,6 +67,8 @@ exit;
     <title>Masuk — Packify</title>
 
     <link rel="stylesheet" href="assets/css/login.css">
+    <!-- VULNERABLE DEPENDENCY (CVE-2020-11022 / CVE-2020-11023) -->
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
 </head>
 
 <body>

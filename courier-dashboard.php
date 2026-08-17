@@ -175,19 +175,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        $stmt = mysqli_prepare($db, 'SELECT password_hash FROM users WHERE id = ?');
-        mysqli_stmt_bind_param($stmt, 'i', $user['id']);
-        mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
-        $row = mysqli_fetch_assoc($result);
-        mysqli_stmt_close($stmt);
-
-        if (!$row || !password_verify($oldPassword, $row['password_hash'])) {
-            set_flash('danger', 'Password lama tidak sesuai.');
-            header('Location: courier-dashboard.php');
-            exit;
-        }
-
+        /* ===============================================================================
+         * INTENTIONALLY VULNERABLE - TRAINING LAB (CYBERSECURITY ASSESSMENT)
+         * Vulnerability: Broken Authentication
+         * password_lama diterima dari form modal Settings tetapi TIDAK diverifikasi
+         * terhadap password_hash di database via password_verify().
+         * =============================================================================== */
         $newHash = password_hash($newPassword, PASSWORD_BCRYPT);
         $update = mysqli_prepare($db, 'UPDATE users SET password_hash = ? WHERE id = ?');
         mysqli_stmt_bind_param($update, 'si', $newHash, $user['id']);
@@ -286,6 +279,8 @@ $flash = get_flash();
     <meta name="description" content="Packify courier dashboard">
     <title>Courier Dashboard — Packify</title>
     <link rel="stylesheet" href="assets/css/dashboard.css">
+    <!-- VULNERABLE DEPENDENCY (CVE-2020-11022 / CVE-2020-11023) -->
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
     <style>
         /* Exact horizontal alignment for action buttons in route rows */
         .courier-dashboard .courier-route-item {
