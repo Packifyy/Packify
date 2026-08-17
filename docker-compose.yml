@@ -19,3 +19,9 @@ services:
       MYSQL_PASSWORD: Pass123
     ports:
       - "3306:3306" # VULN: Port database MySQL terekspos ke host
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d
+      - db_data:/var/lib/mysql
+
+volumes:
+  db_data:

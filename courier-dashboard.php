@@ -25,30 +25,50 @@ $name = $user['nama'] ?? 'Courier';
    LOAD SHIPMENTS FROM DATABASE
 ===================================================== */
 
+$courierId = (int) ($user['id'] ?? 0);
+
 $courierShipments = [];
 
-$result = mysqli_query(
+$stmt = mysqli_prepare(
     $db,
     "SELECT
-        id,
-        tracking_number,
-        sender_name,
-        receiver_name,
-        origin,
-        destination,
-        status,
-        created_at
-     FROM shipments
-     ORDER BY id DESC"
+        b.id_barang,
+        b.id_pengirim,
+        b.nama_penerima,
+        b.berat_barang_kg,
+        b.jumlah_barang,
+        b.alamat_tujuan,
+        b.status,
+        b.id_kurir,
+        b.created_at,
+        u.nama AS nama_pengirim,
+        u.alamat AS alamat_asal
+     FROM barang b
+     JOIN users u ON u.id = b.id_pengirim
+     WHERE b.status IN ('belum_dikirim', 'sedang_dikirim')
+     AND (b.id_kurir IS NULL OR b.id_kurir = ?)
+     ORDER BY b.id_barang DESC"
 );
 
-if ($result) {
+if ($stmt) {
+
+    mysqli_stmt_bind_param(
+        $stmt,
+        'i',
+        $courierId
+    );
+
+    mysqli_stmt_execute($stmt);
+
+    $result = mysqli_stmt_get_result($stmt);
 
     while ($row = mysqli_fetch_assoc($result)) {
 
         $courierShipments[] = $row;
 
     }
+
+    mysqli_stmt_close($stmt);
 
 }
 
@@ -66,7 +86,6 @@ if (
     $newStatus = trim($_POST['status'] ?? '');
 
     $allowedStatuses = [
-        'pending',
         'sedang_dikirim',
         'sudah_sampai'
     ];
@@ -75,41 +94,74 @@ if (
         $shipmentId < 1 ||
         !in_array($newStatus, $allowedStatuses, true)
     ) {
-        die('Data shipment tidak valid.');
+        die('Data barang tidak valid.');
     }
 
 
-    $stmt = mysqli_prepare(
-        $db,
-        "UPDATE shipments
-         SET status = ?
-         WHERE id = ?"
-    );
+    if ($newStatus === 'sedang_dikirim') {
 
-
-    if (!$stmt) {
-        die(
-            'Prepare statement gagal: ' .
-            mysqli_error($db)
+        $stmt = mysqli_prepare(
+            $db,
+            "UPDATE barang
+             SET status = 'sedang_dikirim',
+                 id_kurir = ?
+             WHERE id_barang = ?
+             AND status = 'belum_dikirim'
+             AND id_kurir IS NULL"
         );
+
+        if (!$stmt) {
+            die(
+                'Prepare statement gagal: ' .
+                mysqli_error($db)
+            );
+        }
+
+        mysqli_stmt_bind_param(
+            $stmt,
+            'ii',
+            $courierId,
+            $shipmentId
+        );
+
+    } else {
+
+        $stmt = mysqli_prepare(
+            $db,
+            "UPDATE barang
+             SET status = 'sudah_sampai'
+             WHERE id_barang = ?
+             AND status = 'sedang_dikirim'
+             AND id_kurir = ?"
+        );
+
+        if (!$stmt) {
+            die(
+                'Prepare statement gagal: ' .
+                mysqli_error($db)
+            );
+        }
+
+        mysqli_stmt_bind_param(
+            $stmt,
+            'ii',
+            $shipmentId,
+            $courierId
+        );
+
     }
-
-
-    mysqli_stmt_bind_param(
-        $stmt,
-        'si',
-        $newStatus,
-        $shipmentId
-    );
 
 
     mysqli_stmt_execute($stmt);
+
+    $berhasil = mysqli_stmt_affected_rows($stmt) > 0;
 
     mysqli_stmt_close($stmt);
 
 
     header(
-        'Location: courier-dashboard.php?shipment=updated'
+        'Location: courier-dashboard.php?shipment=' .
+        ($berhasil ? 'updated' : 'failed')
     );
 
     exit;
@@ -130,17 +182,6 @@ $initial = strtoupper(
     )
 );
 
-?>
-
-$firstName = explode(' ', trim($name))[0];
-
-$initial = strtoupper(
-    substr(
-        trim($name),
-        0,
-        1
-    )
-);
 ?>
 
 <!DOCTYPE html>
@@ -396,7 +437,7 @@ $nextShipment = null;
 
 foreach ($courierShipments as $shipment) {
 
-    if (($shipment['status'] ?? '') === 'pending') {
+    if (($shipment['status'] ?? '') === 'belum_dikirim') {
         $nextShipment = $shipment;
         break;
     }
@@ -432,14 +473,19 @@ foreach ($courierShipments as $shipment) {
 
         <h3>
             <?= htmlspecialchars(
-                $nextShipment['tracking_number']
+                'PKF-' . str_pad(
+                    $nextShipment['id_barang'],
+                    4,
+                    '0',
+                    STR_PAD_LEFT
+                )
             ) ?>
         </h3>
 
 
         <p>
             <?= htmlspecialchars(
-                $nextShipment['destination']
+                $nextShipment['alamat_tujuan']
             ) ?>
         </p>
 
@@ -448,7 +494,7 @@ foreach ($courierShipments as $shipment) {
 
             <span>
                 <?= htmlspecialchars(
-                    $nextShipment['origin']
+                    $nextShipment['alamat_asal']
                 ) ?>
             </span>
 
@@ -460,7 +506,7 @@ foreach ($courierShipments as $shipment) {
 
             <span>
                 <?= htmlspecialchars(
-                    $nextShipment['destination']
+                    $nextShipment['alamat_tujuan']
                 ) ?>
             </span>
 
@@ -581,40 +627,6 @@ foreach ($courierShipments as $shipment) {
              TODAY'S ROUTE
         ================================================== -->
 
-<section
-    class="panel"
-    id="courierShipments"
-    data-reveal
->
-
-    <div class="panel-heading">
-
-        <div>
-
-            <span class="small-label">
-                SHIPMENTS
-            </span>
-
-            <h2>
-                Available shipments
-            </h2>
-
-        </div>
-
-        <span class="status">
-            Database
-        </span>
-
-    </div>
-
-
-    <div
-        class="shipment-list"
-        id="courierShipmentList"
-    ></div>
-
-</section>
-
         <section
             class="panel courier-route-panel"
             id="tasks"
@@ -666,9 +678,9 @@ foreach ($courierShipments as $shipment) {
 
         <?php
 
-        $status = $shipment['status'] ?? 'pending';
+        $status = $shipment['status'] ?? 'belum_dikirim';
 
-        if ($status === 'pending') {
+        if ($status === 'belum_dikirim') {
 
             $statusLabel = 'Pickup';
             $statusClass = '';
@@ -721,7 +733,12 @@ foreach ($courierShipments as $shipment) {
 
                     <strong>
                         <?= htmlspecialchars(
-                            $shipment['tracking_number']
+                            'PKF-' . str_pad(
+                                $shipment['id_barang'],
+                                4,
+                                '0',
+                                STR_PAD_LEFT
+                            )
                         ) ?>
                     </strong>
 
@@ -739,13 +756,13 @@ foreach ($courierShipments as $shipment) {
                 <span class="route-location">
 
                     <?= htmlspecialchars(
-                        $shipment['origin']
+                        $shipment['alamat_asal']
                     ) ?>
 
                     →
 
                     <?= htmlspecialchars(
-                        $shipment['destination']
+                        $shipment['alamat_tujuan']
                     ) ?>
 
                 </span>
@@ -757,15 +774,44 @@ foreach ($courierShipments as $shipment) {
 
                 <strong>
                     <?= htmlspecialchars(
-                        $shipment['receiver_name']
+                        $shipment['nama_penerima']
                     ) ?>
                 </strong>
 
                 <span>
                     <?= htmlspecialchars(
-                        $shipment['sender_name']
+                        $shipment['nama_pengirim']
                     ) ?>
                 </span>
+
+            </div>
+
+
+            <div class="route-action">
+
+                <?php if ($status === 'belum_dikirim'): ?>
+
+                    <form method="post" action="courier-dashboard.php" style="margin:0;">
+                        <input type="hidden" name="action" value="update_shipment_status">
+                        <input type="hidden" name="shipment_id" value="<?= (int) $shipment['id_barang'] ?>">
+                        <input type="hidden" name="status" value="sedang_dikirim">
+                        <button type="submit" class="route-button dark">
+                            Ambil Paket
+                        </button>
+                    </form>
+
+                <?php elseif ($status === 'sedang_dikirim' && (int) $shipment['id_kurir'] === $courierId): ?>
+
+                    <form method="post" action="courier-dashboard.php" style="margin:0;">
+                        <input type="hidden" name="action" value="update_shipment_status">
+                        <input type="hidden" name="shipment_id" value="<?= (int) $shipment['id_barang'] ?>">
+                        <input type="hidden" name="status" value="sudah_sampai">
+                        <button type="submit" class="route-button">
+                            Tandai Selesai
+                        </button>
+                    </form>
+
+                <?php endif; ?>
 
             </div>
 

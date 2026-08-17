@@ -106,9 +106,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cance
     $stmt = mysqli_prepare($db, 'DELETE FROM barang WHERE id_barang = ? AND id_pengirim = ? AND status = "belum_dikirim"');
     mysqli_stmt_bind_param($stmt, 'ii', $idBarang, $user['id']);
     mysqli_stmt_execute($stmt);
+
+    $berhasil = mysqli_stmt_affected_rows($stmt) > 0;
     mysqli_stmt_close($stmt);
 
-    header('Location: customer-dashboard.php?shipment=cancelled');
+    header('Location: customer-dashboard.php?shipment=' . ($berhasil ? 'cancelled' : 'cancel_failed'));
     exit;
 }
 
@@ -213,7 +215,7 @@ $recentShipment = !empty($customerShipments) ? $customerShipments[0] : null;
                         <span class="small-label">MY SHIPMENTS</span>
                         <h2>Your packages</h2>
                     </div>
-                    <button type="button" class="form-button primary" onclick="openModal(document.getElementById('shipmentFormModal'))">
+                    <button type="button" class="form-button primary" id="newShipmentButton" onclick="openModal(document.getElementById('shipmentFormModal'))">
                         + New shipment
                     </button>
                 </div>
@@ -240,7 +242,13 @@ $recentShipment = !empty($customerShipments) ? $customerShipments[0] : null;
                                     <?= htmlspecialchars(ucfirst(str_replace('_', ' ', $shipment['status']))) ?>
                                 </span>
                                 <div class="shipment-actions">
-                                    <button type="button" class="table-action" data-view-shipment="<?= (int) $shipment['id_barang'] ?>">View</button>
+                                    <button type="button" class="table-action" data-view-shipment="<?= (int) $shipment['id_barang'] ?>"
+                                            data-nama-penerima="<?= htmlspecialchars($shipment['nama_penerima'], ENT_QUOTES) ?>"
+                                            data-alamat-tujuan="<?= htmlspecialchars($shipment['alamat_tujuan'], ENT_QUOTES) ?>"
+                                            data-berat-barang="<?= (int) $shipment['berat_barang_kg'] ?>"
+                                            data-jumlah-barang="<?= (int) $shipment['jumlah_barang'] ?>"
+                                            data-status="<?= htmlspecialchars(ucfirst(str_replace('_', ' ', $shipment['status'])), ENT_QUOTES) ?>"
+                                            data-created-at="<?= htmlspecialchars(date('d M Y', strtotime($shipment['created_at'])), ENT_QUOTES) ?>">View</button>
                                     <?php if ($shipment['status'] === 'belum_dikirim'): ?>
                                         <button type="button" class="table-action" data-edit-shipment="<?= (int) $shipment['id_barang'] ?>" 
                                                 data-nama-penerima="<?= htmlspecialchars($shipment['nama_penerima'], ENT_QUOTES) ?>"
@@ -543,29 +551,39 @@ $recentShipment = !empty($customerShipments) ? $customerShipments[0] : null;
 <script>
 // Enhanced JavaScript for handling the new structure
 document.addEventListener('DOMContentLoaded', function() {
+    const newShipmentButton = document.getElementById('newShipmentButton');
+    if (newShipmentButton) {
+        newShipmentButton.addEventListener('click', function() {
+            const modal = document.getElementById('shipmentFormModal');
+            const form = modal.querySelector('form');
+            const title = modal.querySelector('h2');
+            const submitBtn = form.querySelector('button[type="submit"]');
+
+            title.textContent = 'Create shipment';
+            submitBtn.textContent = 'Save shipment';
+            form.querySelector('input[name="action"]').value = 'create_shipment';
+
+            const idField = form.querySelector('input[name="id_barang"]');
+            if (idField) idField.remove();
+
+            form.reset();
+        });
+    }
+
     // View shipment details
     document.querySelectorAll('[data-view-shipment]').forEach(btn => {
         btn.addEventListener('click', function() {
             const id = this.dataset.viewShipment;
-            // Find the shipment data in the list
-            const row = this.closest('.shipment-row');
-            if (row) {
-                const recipient = row.querySelector('.shipment-main span')?.textContent || '-';
-                const address = row.querySelector('.shipment-recipient span')?.textContent || '-';
-                const weight = row.querySelector('.shipment-recipient strong')?.textContent || '-';
-                const status = row.querySelector('.status')?.textContent || 'Belum dikirim';
-                const created = row.closest('.shipment-list')?.querySelector('.history-date')?.textContent || '-';
-                
-                document.getElementById('detailShipmentId').textContent = '#' + id;
-                document.getElementById('detailStatus').textContent = status;
-                document.getElementById('detailRecipient').textContent = recipient;
-                document.getElementById('detailAddress').textContent = address;
-                document.getElementById('detailWeight').textContent = weight;
-                document.getElementById('detailQuantity').textContent = '1';
-                document.getElementById('detailCreated').textContent = created || new Date().toLocaleDateString('id-ID');
-                
-                openModal(document.getElementById('shipmentDetailModal'));
-            }
+
+            document.getElementById('detailShipmentId').textContent = '#' + id;
+            document.getElementById('detailStatus').textContent = this.dataset.status || 'Belum dikirim';
+            document.getElementById('detailRecipient').textContent = this.dataset.namaPenerima || '-';
+            document.getElementById('detailAddress').textContent = this.dataset.alamatTujuan || '-';
+            document.getElementById('detailWeight').textContent = (this.dataset.beratBarang || '-') + ' kg';
+            document.getElementById('detailQuantity').textContent = this.dataset.jumlahBarang || '1';
+            document.getElementById('detailCreated').textContent = this.dataset.createdAt || '-';
+
+            openModal(document.getElementById('shipmentDetailModal'));
         });
     });
 
@@ -610,6 +628,12 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('[data-cancel-shipment]').forEach(btn => {
         btn.addEventListener('click', function() {
             const id = this.dataset.cancelShipment;
+
+            if (!id || isNaN(parseInt(id, 10))) {
+                alert('ID barang tidak terdeteksi. Muat ulang halaman lalu coba lagi.');
+                return;
+            }
+
             if (confirm('Are you sure you want to cancel this shipment?')) {
                 const form = document.createElement('form');
                 form.method = 'POST';

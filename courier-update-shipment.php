@@ -24,6 +24,9 @@ if (
 }
 
 
+$courierId =
+    (int) ($user['id'] ?? 0);
+
 $shipmentId =
     (int) ($_POST['shipment_id'] ?? 0);
 
@@ -52,10 +55,12 @@ if ($action === 'pickup') {
 
     $stmt = mysqli_prepare(
         $db,
-        'UPDATE shipments
-         SET status = "in_transit"
-         WHERE id = ?
-         AND status = "pending"'
+        'UPDATE barang
+         SET status = "sedang_dikirim",
+             id_kurir = ?
+         WHERE id_barang = ?
+         AND status = "belum_dikirim"
+         AND id_kurir IS NULL'
     );
 
 
@@ -74,7 +79,8 @@ if ($action === 'pickup') {
 
     mysqli_stmt_bind_param(
         $stmt,
-        'i',
+        'ii',
+        $courierId,
         $shipmentId
     );
 
@@ -91,7 +97,7 @@ if ($action === 'pickup') {
         echo json_encode([
             'success' => false,
             'message' =>
-                'Shipment sudah diambil atau tidak tersedia.'
+                'Barang sudah diambil atau tidak tersedia.'
         ]);
 
         exit;
@@ -103,9 +109,9 @@ if ($action === 'pickup') {
 
     echo json_encode([
         'success' => true,
-        'status' => 'in_transit',
+        'status' => 'sedang_dikirim',
         'message' =>
-            'Shipment berhasil diambil. Status sekarang In transit.'
+            'Barang berhasil diambil. Status sekarang sedang dikirim.'
     ]);
 
     exit;
@@ -120,10 +126,11 @@ if ($action === 'delivered') {
 
     $stmt = mysqli_prepare(
         $db,
-        'UPDATE shipments
-         SET status = "delivered"
-         WHERE id = ?
-         AND status = "in_transit"'
+        'UPDATE barang
+         SET status = "sudah_sampai"
+         WHERE id_barang = ?
+         AND status = "sedang_dikirim"
+         AND id_kurir = ?'
     );
 
 
@@ -142,8 +149,9 @@ if ($action === 'delivered') {
 
     mysqli_stmt_bind_param(
         $stmt,
-        'i',
-        $shipmentId
+        'ii',
+        $shipmentId,
+        $courierId
     );
 
 
@@ -159,7 +167,7 @@ if ($action === 'delivered') {
         echo json_encode([
             'success' => false,
             'message' =>
-                'Shipment belum berstatus In transit.'
+                'Barang belum berstatus sedang dikirim atau bukan milik Anda.'
         ]);
 
         exit;
@@ -171,9 +179,9 @@ if ($action === 'delivered') {
 
     echo json_encode([
         'success' => true,
-        'status' => 'delivered',
+        'status' => 'sudah_sampai',
         'message' =>
-            'Shipment berhasil ditandai sebagai delivered.'
+            'Barang berhasil ditandai sebagai sudah sampai.'
     ]);
 
     exit;
