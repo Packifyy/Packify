@@ -53,9 +53,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $row = mysqli_fetch_assoc($result);
             mysqli_stmt_close($stmt);
 
-            $isPasswordLamaValid = password_verify($data['password_lama'], $row['password_hash']);
+            $isPasswordLamaValid = $row && password_verify($data['password_lama'], $row['password_hash']);
 
-            if (empty($data['password_lama'])) {
+            /* ====================== FIX: Broken Authentication ======================
+             * Sebelumnya kode ini hanya mengecek apakah field password lama KOSONG,
+             * bukan mengecek hasil $isPasswordLamaValid dari password_verify().
+             * Akibatnya siapa pun yang tahu email korban bisa mengganti password
+             * korban hanya dengan mengisi apa saja di field "password lama".
+             * Sekarang $isPasswordLamaValid benar-benar divalidasi sebelum update.
+             * =============================================================================== */
+            if (!$isPasswordLamaValid) {
                 $passwordErrors[] = 'Password lama tidak sesuai.';
             } else {
                 $newHash = password_hash($data['password_baru'], PASSWORD_BCRYPT);

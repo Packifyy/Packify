@@ -6,20 +6,14 @@ $user = require_login(['pelanggan']);
 $id = (int) ($_GET['id'] ?? 0);
 $errors = [];
 
-/* ====================== CATATAN VULNERABILITY (SENGAJA) ======================
- * IDOR (Insecure Direct Object Reference) — sesuai Matriks Kerentanan
- * "Application / IDOR". Query SELECT & UPDATE di bawah ini SENGAJA tidak
- * menambahkan kondisi `AND id_pengirim = ?` terhadap user yang sedang login
- * (dari require_login()). Akibatnya, pelanggan A yang sudah login tetap bisa
- * mengedit paket milik pelanggan B hanya dengan mengganti ?id= di URL.
- *
- * Versi aman (untuk dipatch nanti saat jadi portofolio):
- *   SELECT * FROM barang WHERE id_barang = ? AND id_pengirim = ?
- *   UPDATE barang SET ... WHERE id_barang = ? AND id_pengirim = ?
+/* ====================== FIX: IDOR (Insecure Direct Object Reference) ======================
+ * Query SELECT & UPDATE di bawah ini WAJIB menambahkan kondisi `AND id_pengirim = ?`
+ * terhadap user yang sedang login (dari require_login()), supaya pelanggan A tidak bisa
+ * melihat/mengedit paket milik pelanggan B hanya dengan mengganti ?id= di URL.
  * =============================================================================== */
 
-$stmt = mysqli_prepare($db, 'SELECT * FROM barang WHERE id_barang = ?');
-mysqli_stmt_bind_param($stmt, 'i', $id);
+$stmt = mysqli_prepare($db, 'SELECT * FROM barang WHERE id_barang = ? AND id_pengirim = ?');
+mysqli_stmt_bind_param($stmt, 'ii', $id, $user['id']);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $paket = mysqli_fetch_assoc($result);
@@ -58,13 +52,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (empty($errors)) {
-            // Sengaja TIDAK ada "AND id_pengirim = ?" di WHERE (vuln IDOR, lihat catatan di atas)
+            // Fix IDOR: WHERE menyertakan "AND id_pengirim = ?" supaya hanya pemilik paket yang bisa mengubahnya
             $stmt = mysqli_prepare(
                 $db,
                 'UPDATE barang SET nama_penerima = ?, berat_barang_kg = ?, jumlah_barang = ?, alamat_tujuan = ?
-                 WHERE id_barang = ?'
+                 WHERE id_barang = ? AND id_pengirim = ?'
             );
-            mysqli_stmt_bind_param($stmt, 'siisi', $nama_penerima, $berat, $jumlah, $alamat_tujuan, $id);
+            mysqli_stmt_bind_param($stmt, 'siisii', $nama_penerima, $berat, $jumlah, $alamat_tujuan, $id, $user['id']);
             mysqli_stmt_execute($stmt);
             mysqli_stmt_close($stmt);
 

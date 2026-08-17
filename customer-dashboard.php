@@ -14,6 +14,60 @@ $name = $user['nama'] ?? 'Customer';
 $firstName = explode(' ', trim($name))[0];
 $initial = strtoupper(substr(trim($name), 0, 1));
 
+// Semua POST di dashboard ini wajib membawa CSRF token yang valid (fix: forms sebelumnya tidak dilindungi CSRF)
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+}
+
+// Handle change password (fix: sebelumnya modal ini hanya tampilan, tidak benar-benar mengubah password)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'change_password') {
+    $oldPassword = $_POST['old_password'] ?? '';
+    $newPassword = $_POST['new_password'] ?? '';
+    $confirmPassword = $_POST['confirm_password'] ?? '';
+
+    if ($oldPassword === '' || $newPassword === '' || $confirmPassword === '') {
+        set_flash('danger', 'Semua kolom password wajib diisi.');
+        header('Location: customer-dashboard.php');
+        exit;
+    }
+
+    if (strlen($newPassword) < 8) {
+        set_flash('danger', 'Password baru minimal 8 karakter.');
+        header('Location: customer-dashboard.php');
+        exit;
+    }
+
+    if ($newPassword !== $confirmPassword) {
+        set_flash('danger', 'Konfirmasi password baru tidak sama dengan password baru.');
+        header('Location: customer-dashboard.php');
+        exit;
+    }
+
+    $stmt = mysqli_prepare($db, 'SELECT password_hash FROM users WHERE id = ?');
+    mysqli_stmt_bind_param($stmt, 'i', $user['id']);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $row = mysqli_fetch_assoc($result);
+    mysqli_stmt_close($stmt);
+
+    // Validasi password lama benar-benar dicek (bukan sekadar dicek "kosong atau tidak")
+    if (!$row || !password_verify($oldPassword, $row['password_hash'])) {
+        set_flash('danger', 'Password lama tidak sesuai.');
+        header('Location: customer-dashboard.php');
+        exit;
+    }
+
+    $newHash = password_hash($newPassword, PASSWORD_BCRYPT);
+    $update = mysqli_prepare($db, 'UPDATE users SET password_hash = ? WHERE id = ?');
+    mysqli_stmt_bind_param($update, 'si', $newHash, $user['id']);
+    mysqli_stmt_execute($update);
+    mysqli_stmt_close($update);
+
+    set_flash('success', 'Password berhasil diubah.');
+    header('Location: customer-dashboard.php');
+    exit;
+}
+
 // Handle profile update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_profile') {
     $newName = trim($_POST['name'] ?? '');
@@ -76,6 +130,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
         die('Data barang tidak lengkap.');
     }
 
+    /* ====================== FIX: IDOR (Insecure Direct Object Reference) ======================
+     * Query di bawah ini WAJIB menambahkan kondisi "AND id_pengirim = ?", supaya
+     * pelanggan A yang sedang login tidak bisa mengedit paket milik pelanggan lain
+     * dengan mengganti nilai id_barang di form/request.
+     * =============================================================================== */
     $stmt = mysqli_prepare($db, 'UPDATE barang SET nama_penerima = ?, alamat_tujuan = ?, berat_barang_kg = ?, jumlah_barang = ? WHERE id_barang = ? AND id_pengirim = ? AND status = "belum_dikirim"');
     
     if (!$stmt) {
@@ -103,6 +162,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cance
         die('ID barang tidak valid.');
     }
 
+    /* ====================== FIX: IDOR (Insecure Direct Object Reference) ======================
+     * Query DELETE ini WAJIB memvalidasi id_pengirim terhadap user yang sedang login.
+     * =============================================================================== */
     $stmt = mysqli_prepare($db, 'DELETE FROM barang WHERE id_barang = ? AND id_pengirim = ? AND status = "belum_dikirim"');
     mysqli_stmt_bind_param($stmt, 'ii', $idBarang, $user['id']);
     mysqli_stmt_execute($stmt);
@@ -131,11 +193,13 @@ if ($stmt) {
 // Calculate stats
 $totalShipments = count($customerShipments);
 $pendingShipments = array_filter($customerShipments, function($s) { return $s['status'] === 'belum_dikirim'; });
-$inTransitShipments = array_filter($customerShipments, function($s) { return $s['status'] === 'dalam_perjalanan'; });
-$deliveredShipments = array_filter($customerShipments, function($s) { return $s['status'] === 'dikirim'; });
+$inTransitShipments = array_filter($customerShipments, function($s) { return $s['status'] === 'sedang_dikirim'; });
+$deliveredShipments = array_filter($customerShipments, function($s) { return $s['status'] === 'sudah_sampai'; });
 
 // Get recent shipment (first one)
 $recentShipment = !empty($customerShipments) ? $customerShipments[0] : null;
+
+$flash = get_flash();
 ?>
 
 <!DOCTYPE html>
@@ -238,7 +302,7 @@ $recentShipment = !empty($customerShipments) ? $customerShipments[0] : null;
                                     <strong><?= $shipment['berat_barang_kg'] ?> kg</strong>
                                     <span><?= htmlspecialchars($shipment['alamat_tujuan']) ?></span>
                                 </div>
-                                <span class="status <?= $shipment['status'] === 'dikirim' ? 'delivered' : ($shipment['status'] === 'dalam_perjalanan' ? 'in-transit' : '') ?>">
+                                <span class="status <?= $shipment['status'] === 'sudah_sampai' ? 'delivered' : ($shipment['status'] === 'sedang_dikirim' ? 'in-transit' : '') ?>">
                                     <?= htmlspecialchars(ucfirst(str_replace('_', ' ', $shipment['status']))) ?>
                                 </span>
                                 <div class="shipment-actions">
@@ -273,7 +337,7 @@ $recentShipment = !empty($customerShipments) ? $customerShipments[0] : null;
                         <span class="small-label">RECENT SHIPMENT</span>
                         <h2><?= $recentShipment ? '#' . htmlspecialchars($recentShipment['id_barang']) : 'No shipments' ?></h2>
                     </div>
-                    <span class="status <?= $recentShipment && $recentShipment['status'] === 'dikirim' ? 'delivered' : '' ?>">
+                    <span class="status <?= $recentShipment && $recentShipment['status'] === 'sudah_sampai' ? 'delivered' : '' ?>">
                         <?= $recentShipment ? htmlspecialchars(ucfirst(str_replace('_', ' ', $recentShipment['status']))) : 'N/A' ?>
                     </span>
                 </div>
@@ -298,10 +362,10 @@ $recentShipment = !empty($customerShipments) ? $customerShipments[0] : null;
                 <div class="shipment-progress">
                     <div class="progress-heading">
                         <span>Shipment progress</span>
-                        <strong><?= $recentShipment ? ($recentShipment['status'] === 'dikirim' ? '100%' : ($recentShipment['status'] === 'dalam_perjalanan' ? '50%' : '0%')) : '0%' ?></strong>
+                        <strong><?= $recentShipment ? ($recentShipment['status'] === 'sudah_sampai' ? '100%' : ($recentShipment['status'] === 'sedang_dikirim' ? '50%' : '0%')) : '0%' ?></strong>
                     </div>
                     <div class="progress-track">
-                        <div class="progress-fill" style="width:<?= $recentShipment ? ($recentShipment['status'] === 'dikirim' ? '100' : ($recentShipment['status'] === 'dalam_perjalanan' ? '50' : '0')) : '0' ?>%"></div>
+                        <div class="progress-fill" style="width:<?= $recentShipment ? ($recentShipment['status'] === 'sudah_sampai' ? '100' : ($recentShipment['status'] === 'sedang_dikirim' ? '50' : '0')) : '0' ?>%"></div>
                     </div>
                     <div class="progress-meta">
                         <span><?= $recentShipment ? ucfirst(str_replace('_', ' ', $recentShipment['status'])) : 'No status' ?></span>
@@ -318,18 +382,18 @@ $recentShipment = !empty($customerShipments) ? $customerShipments[0] : null;
                             <span><?= $recentShipment ? date('d M Y · H:i', strtotime($recentShipment['created_at'])) : 'N/A' ?></span>
                         </div>
                     </div>
-                    <div class="tracking-item <?= $recentShipment && ($recentShipment['status'] === 'dalam_perjalanan' || $recentShipment['status'] === 'dikirim') ? 'completed' : '' ?>">
+                    <div class="tracking-item <?= $recentShipment && ($recentShipment['status'] === 'sedang_dikirim' || $recentShipment['status'] === 'sudah_sampai') ? 'completed' : '' ?>">
                         <div class="dot"></div>
                         <div>
                             <strong>Picked up</strong>
                             <span><?= $recentShipment && $recentShipment['status'] !== 'belum_dikirim' ? 'Package picked up by courier' : 'Awaiting pickup' ?></span>
                         </div>
                     </div>
-                    <div class="tracking-item <?= $recentShipment && $recentShipment['status'] === 'dikirim' ? 'completed' : '' ?>">
+                    <div class="tracking-item <?= $recentShipment && $recentShipment['status'] === 'sudah_sampai' ? 'completed' : '' ?>">
                         <div class="dot"></div>
                         <div>
                             <strong>Delivered</strong>
-                            <span><?= $recentShipment && $recentShipment['status'] === 'dikirim' ? 'Package delivered successfully' : 'Awaiting delivery' ?></span>
+                            <span><?= $recentShipment && $recentShipment['status'] === 'sudah_sampai' ? 'Package delivered successfully' : 'Awaiting delivery' ?></span>
                         </div>
                     </div>
                 </div>
@@ -382,7 +446,7 @@ $recentShipment = !empty($customerShipments) ? $customerShipments[0] : null;
                             <strong>#<?= htmlspecialchars($shipment['id_barang']) ?></strong>
                             <span><?= htmlspecialchars($shipment['nama_penerima']) ?> · <?= $shipment['berat_barang_kg'] ?> kg</span>
                         </div>
-                        <span class="status <?= $shipment['status'] === 'dikirim' ? 'delivered' : '' ?>">
+                        <span class="status <?= $shipment['status'] === 'sudah_sampai' ? 'delivered' : '' ?>">
                             <?= htmlspecialchars(ucfirst(str_replace('_', ' ', $shipment['status']))) ?>
                         </span>
                         <span class="history-date"><?= date('d M Y', strtotime($shipment['created_at'])) ?></span>
@@ -699,7 +763,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <p><strong>Recipient:</strong> ${recipient}</p>
                         <p><strong>Address:</strong> ${address}</p>
                         <p><strong>Weight:</strong> ${weight}</p>
-                        <p><strong>Status:</strong> <span class="status ${status.toLowerCase().includes('dikirim') ? 'delivered' : ''}">${status}</span></p>
+                        <p><strong>Status:</strong> <span class="status ${status.toLowerCase().includes('sudah_sampai') ? 'delivered' : ''}">${status}</span></p>
                     </div>
                 `;
                 resultDiv.style.display = 'block';
