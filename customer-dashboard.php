@@ -209,6 +209,7 @@ $flash = get_flash();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Packify customer dashboard">
     <title>Dashboard — Packify</title>
+    <meta name="csrf-token" content="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="assets/css/dashboard.css">
 </head>
 
@@ -292,10 +293,11 @@ $flash = get_flash();
                             <p>Create your first shipment to get started.</p>
                         </div>
                     <?php else: ?>
+                        <?php $displayNumber = 1; ?>
                         <?php foreach ($customerShipments as $shipment): ?>
                             <div class="shipment-row">
                                 <div class="shipment-main">
-                                    <strong>#<?= htmlspecialchars($shipment['id_barang']) ?></strong>
+                                    <strong>#<?= $displayNumber ?></strong>
                                     <span><?= htmlspecialchars($shipment['nama_penerima']) ?></span>
                                 </div>
                                 <div class="shipment-recipient">
@@ -325,6 +327,7 @@ $flash = get_flash();
                                     <?php endif; ?>
                                 </div>
                             </div>
+                            <?php $displayNumber++; ?>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </div>
@@ -335,7 +338,20 @@ $flash = get_flash();
                 <div class="panel-heading">
                     <div>
                         <span class="small-label">RECENT SHIPMENT</span>
-                        <h2><?= $recentShipment ? '#' . htmlspecialchars($recentShipment['id_barang']) : 'No shipments' ?></h2>
+                        <h2><?php
+                        if ($recentShipment) {
+                            $recentDisplayNumber = 1;
+                            foreach ($customerShipments as $index => $s) {
+                                if ((int) $s['id_barang'] === (int) $recentShipment['id_barang']) {
+                                    $recentDisplayNumber = $index + 1;
+                                    break;
+                                }
+                            }
+                            echo '#' . $recentDisplayNumber;
+                        } else {
+                            echo 'No shipments';
+                        }
+                    ?></h2>
                     </div>
                     <span class="status <?= $recentShipment && $recentShipment['status'] === 'sudah_sampai' ? 'delivered' : '' ?>">
                         <?= $recentShipment ? htmlspecialchars(ucfirst(str_replace('_', ' ', $recentShipment['status']))) : 'N/A' ?>
@@ -440,10 +456,10 @@ $flash = get_flash();
                     <p>No shipment history yet.</p>
                 </div>
             <?php else: ?>
-                <?php foreach ($historyShipments as $shipment): ?>
+                <?php foreach ($historyShipments as $historyIndex => $shipment): ?>
                     <div class="history-row">
                         <div class="history-info">
-                            <strong>#<?= htmlspecialchars($shipment['id_barang']) ?></strong>
+                            <strong>#<?= $historyIndex + 1 ?></strong>
                             <span><?= htmlspecialchars($shipment['nama_penerima']) ?> · <?= $shipment['berat_barang_kg'] ?> kg</span>
                         </div>
                         <span class="status <?= $shipment['status'] === 'sudah_sampai' ? 'delivered' : '' ?>">
@@ -481,6 +497,7 @@ $flash = get_flash();
         </div>
         <form class="packify-form" id="profileForm" method="POST" action="customer-dashboard.php">
             <input type="hidden" name="action" value="update_profile">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
             <div class="form-field">
                 <label>FULL NAME</label>
                 <input type="text" name="name" value="<?= htmlspecialchars($name) ?>" required>
@@ -498,6 +515,40 @@ $flash = get_flash();
                 <button type="submit" class="form-button primary">Save changes</button>
             </div>
         </form>
+
+        <!-- CHANGE PASSWORD -->
+        <div class="profile-password-section" style="margin-top: 28px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,.08);">
+            <div class="packify-modal-header" style="margin-bottom: 18px;">
+                <div>
+                    <span class="small-label">SECURITY</span>
+                    <h2>Change password</h2>
+                </div>
+            </div>
+
+            <form class="packify-form" id="changePasswordForm" method="POST" action="edit.php">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="change_password">
+
+                <div class="form-field">
+                    <label>CURRENT PASSWORD</label>
+                    <input type="password" name="password_lama" autocomplete="current-password" required>
+                </div>
+
+                <div class="form-field">
+                    <label>NEW PASSWORD</label>
+                    <input type="password" name="password_baru" minlength="8" autocomplete="new-password" required>
+                </div>
+
+                <div class="form-field">
+                    <label>CONFIRM NEW PASSWORD</label>
+                    <input type="password" name="konfirmasi_password_baru" minlength="8" autocomplete="new-password" required>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="form-button primary">Update password</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -546,6 +597,7 @@ $flash = get_flash();
         </div>
         <form class="packify-form" id="shipmentForm" method="POST" action="customer-dashboard.php">
             <input type="hidden" name="action" value="create_shipment">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
             <div class="form-field">
                 <label>RECIPIENT NAME</label>
                 <input type="text" name="nama_penerima" placeholder="Recipient full name" required>
@@ -639,7 +691,9 @@ document.addEventListener('DOMContentLoaded', function() {
         btn.addEventListener('click', function() {
             const id = this.dataset.viewShipment;
 
-            document.getElementById('detailShipmentId').textContent = '#' + id;
+            const rows = Array.from(document.querySelectorAll('[data-view-shipment]'));
+            const displayNumber = rows.indexOf(this) + 1;
+            document.getElementById('detailShipmentId').textContent = '#' + displayNumber;
             document.getElementById('detailStatus').textContent = this.dataset.status || 'Belum dikirim';
             document.getElementById('detailRecipient').textContent = this.dataset.namaPenerima || '-';
             document.getElementById('detailAddress').textContent = this.dataset.alamatTujuan || '-';
@@ -705,6 +759,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 form.innerHTML = `
                     <input type="hidden" name="action" value="cancel_shipment">
                     <input type="hidden" name="id_barang" value="${id}">
+                    <input type="hidden" name="csrf_token" value="${document.querySelector('meta[name="csrf-token"]')?.content || ''}">
                 `;
                 document.body.appendChild(form);
                 form.submit();

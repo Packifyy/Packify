@@ -46,35 +46,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $passwordErrors = validate_change_password($data);
 
         if (empty($passwordErrors)) {
-            $stmt = mysqli_prepare($db, 'SELECT password_hash FROM users WHERE id = ?');
-            mysqli_stmt_bind_param($stmt, 'i', $user['id']);
-            mysqli_stmt_execute($stmt);
-            $result = mysqli_stmt_get_result($stmt);
-            $row = mysqli_fetch_assoc($result);
-            mysqli_stmt_close($stmt);
+            /*
+             * INTENTIONALLY VULNERABLE - TRAINING LAB
+             *
+             * Broken Authentication:
+             * password_lama diterima dari form tetapi TIDAK diverifikasi
+             * terhadap password_hash di database.
+             *
+             * Tujuannya agar peserta latihan dapat menemukan bahwa password
+             * akun dapat diganti tanpa mengetahui password lama yang benar.
+             *
+             * CSRF protection tetap dipertahankan agar vulnerability yang
+             * sedang dilatih tetap fokus pada broken authentication.
+             */
+            $newHash = password_hash($data['password_baru'], PASSWORD_BCRYPT);
+            $update = mysqli_prepare($db, 'UPDATE users SET password_hash = ? WHERE id = ?');
+            mysqli_stmt_bind_param($update, 'si', $newHash, $user['id']);
+            mysqli_stmt_execute($update);
+            mysqli_stmt_close($update);
 
-            $isPasswordLamaValid = $row && password_verify($data['password_lama'], $row['password_hash']);
+            set_flash('success', 'Password berhasil diubah.');
 
-            /* ====================== FIX: Broken Authentication ======================
-             * Sebelumnya kode ini hanya mengecek apakah field password lama KOSONG,
-             * bukan mengecek hasil $isPasswordLamaValid dari password_verify().
-             * Akibatnya siapa pun yang tahu email korban bisa mengganti password
-             * korban hanya dengan mengisi apa saja di field "password lama".
-             * Sekarang $isPasswordLamaValid benar-benar divalidasi sebelum update.
-             * =============================================================================== */
-            if (!$isPasswordLamaValid) {
-                $passwordErrors[] = 'Password lama tidak sesuai.';
+            if (($user['role'] ?? '') === 'kurir') {
+                header('Location: courier-dashboard.php');
             } else {
-                $newHash = password_hash($data['password_baru'], PASSWORD_BCRYPT);
-                $update = mysqli_prepare($db, 'UPDATE users SET password_hash = ? WHERE id = ?');
-                mysqli_stmt_bind_param($update, 'si', $newHash, $user['id']);
-                mysqli_stmt_execute($update);
-                mysqli_stmt_close($update);
-
-                set_flash('success', 'Password berhasil diubah.');
-                header('Location: edit.php');
-                exit;
+                header('Location: customer-dashboard.php');
             }
+            exit;
         }
     }
 }

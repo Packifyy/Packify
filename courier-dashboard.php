@@ -513,13 +513,26 @@ foreach ($courierShipments as $shipment) {
         </div>
 
 
-        <button
-            type="button"
-            class="route-button"
-        >
-            View delivery
-            <span>→</span>
-        </button>
+        <?php if (($nextShipment['status'] ?? '') === 'belum_dikirim'): ?>
+            <form method="post" action="courier-dashboard.php" style="margin:0;">
+                <input type="hidden" name="action" value="update_shipment_status">
+                <input type="hidden" name="shipment_id" value="<?= (int) $nextShipment['id_barang'] ?>">
+                <input type="hidden" name="status" value="sedang_dikirim">
+                <button
+                    type="submit"
+                    class="route-button dark courier-pickup-button"
+                    style="display:inline-flex !important; visibility:visible !important; opacity:1 !important; cursor:pointer;"
+                >
+                    Ambil Paket
+                    <span>→</span>
+                </button>
+            </form>
+        <?php else: ?>
+            <button type="button" class="route-button">
+                View delivery
+                <span>→</span>
+            </button>
+        <?php endif; ?>
 
     <?php else: ?>
 
@@ -678,7 +691,7 @@ foreach ($courierShipments as $shipment) {
 
         <?php
 
-        $status = $shipment['status'] ?? 'belum_dikirim';
+        $status = strtolower(trim((string) ($shipment['status'] ?? 'belum_dikirim')));
 
         if ($status === 'belum_dikirim') {
 
@@ -787,7 +800,10 @@ foreach ($courierShipments as $shipment) {
             </div>
 
 
-            <div class="route-action">
+            <div
+                class="route-action"
+                style="display:flex !important; align-items:center; justify-content:flex-end; visibility:visible !important; opacity:1 !important;"
+            >
 
                 <?php if ($status === 'belum_dikirim'): ?>
 
@@ -795,7 +811,11 @@ foreach ($courierShipments as $shipment) {
                         <input type="hidden" name="action" value="update_shipment_status">
                         <input type="hidden" name="shipment_id" value="<?= (int) $shipment['id_barang'] ?>">
                         <input type="hidden" name="status" value="sedang_dikirim">
-                        <button type="submit" class="route-button dark">
+                        <button
+                            type="submit"
+                            class="route-button dark courier-pickup-button"
+                            style="display:inline-flex !important; visibility:visible !important; opacity:1 !important; cursor:pointer;"
+                        >
                             Ambil Paket
                         </button>
                     </form>
